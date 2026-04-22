@@ -1,0 +1,51 @@
+name: Scrape lolalytics data
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Tier to scrape"
+        default: "emerald_plus"
+        required: false
+      patch:
+        description: "Patch window (days)"
+        default: "30"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        run: |
+          python scrape_data.py \
+            --tier "${{ github.event.inputs.tier || 'emerald_plus' }}" \
+            --patch "${{ github.event.inputs.patch || '30' }}"
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No data changes."
+          else
+            git commit -m "chore(data): weekly scrape $(date -u +%Y-%m-%d)"
+            git push
+          fi

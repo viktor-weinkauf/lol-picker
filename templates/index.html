@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoL Champion Picker</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LoL Champion Picker</h1>
+            <div class="header-meta">
+                <span>Patch {{ meta.current_patch }}</span>
+                <span>&middot;</span>
+                <span>Last {{ meta.patch }} days</span>
+                <span>&middot;</span>
+                <label>Tier:</label>
+                <select id="tier-select">
+                    {% for t in tiers %}
+                    <option value="{{ t }}" {{ "selected" if t == default_tier else "" }}>{{ t | replace("_", " ") | title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </header>
+
+        <div class="role-picker">
+            <label>Picking for:</label>
+            <div class="role-buttons" id="role-buttons">
+                {% for r in roles %}
+                <button class="role-btn {{ 'active' if r == 'support' else '' }}" data-role="{{ r }}">
+                    {{ {"top":"TOP","jungle":"JNG","middle":"MID","bottom":"ADC","support":"SUP"}[r] }}
+                </button>
+                {% endfor %}
+            </div>
+            <label class="bidi-toggle">
+                <input type="checkbox" id="bidirectional" checked>
+                2-sided
+            </label>
+            <button class="lcu-btn" id="lcu-btn" onclick="toggleLcu()">Connect</button>
+            <span class="lcu-status disconnected" id="lcu-status">Disconnected</span>
+        </div>
+
+        <!-- Bans -->
+        <div class="bans-section">
+            <h3 class="team-label ban-label">Bans</h3>
+            <div class="role-row" id="ban-slots"></div>
+        </div>
+
+        <div class="draft">
+            <div class="team ally-team">
+                <h3 class="team-label ally-label">Your Team</h3>
+                <div class="role-row" id="ally-slots"></div>
+            </div>
+
+            <div class="team enemy-team">
+                <h3 class="team-label enemy-label">Enemy Team</h3>
+                <div class="role-row" id="enemy-slots"></div>
+            </div>
+        </div>
+
+        <details class="weights-panel">
+            <summary>Scoring Weights</summary>
+            <div class="weights-sections" id="weights-container"></div>
+        </details>
+
+        <!-- Build display -->
+        <div id="build-panel" class="build-panel hidden">
+            <h2 id="build-title">Optimal Build</h2>
+            <div id="build-content"></div>
+        </div>
+        <div class="build-hint-bar" id="build-hint-bar">
+            <span class="build-hint">Click a champion in the table to calculate optimal runes for that pick</span>
+        </div>
+
+        <div id="results" class="results">
+            <h2 id="results-title">Recommended</h2>
+            <table id="results-table">
+                <thead id="results-head"></thead>
+                <tbody id="results-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const DDRAGON = "{{ ddragon_version }}";
+        const NAME_TO_IMAGE = {{ name_to_image | tojson }};
+        const POOLS = {{ pools | tojson }};
+        const DEFAULT_WEIGHTS = {{ default_weights | tojson }};
+        const ALL_CHAMPS = {{ all_champs | tojson }};
+
+        const ROLE_LABELS = {top:"TOP", jungle:"JNG", middle:"MID", bottom:"ADC", support:"SUP"};
+        const ROLE_LABELS_FULL = {top:"Top", jungle:"Jungle", middle:"Mid", bottom:"ADC", support:"Support"};
+        const ALL_ROLES = ["top", "jungle", "middle", "bottom", "support"];
+        const ROLE_TO_ALLY = {top:"ally_top", jungle:"ally_jungle", middle:"ally_mid", bottom:"ally_adc", support:"ally_support"};
+
+        let pickingRole = "support";
+        let lastEnemyRoles = {};
+
+        function iconUrl(name) {
+            const k = NAME_TO_IMAGE[name];
+            return k ? `https://ddragon.leagueoflegends.com/cdn/${DDRAGON}/img/champion/${k}.png` : "";
+        }
+
+        function buildUrl(name, enemySup) {
+            const s = name.toLowerCase().replace(/['\s.]/g, "").replace("&willump", "");
+            if (enemySup) {
+                const v = enemySup.toLowerCase().replace(/['\s.]/g, "").replace("&willump", "");
+                return `https://lolalytics.com/lol/${s}/vs/${v}/build/?lane=${pickingRole}`;
+            }
+            return `https://lolalytics.com/lol/${s}/build/?lane=${pickingRole}`;
+        }
+
+        function fmtDelta(v) { return v == null ? "-" : (v >= 0 ? "+" : "") + v.toFixed(2); }
+        function fmtGames(n) { return n >= 1000 ? (n/1000).toFixed(1)+"k" : String(n); }
+        function dCls(v) {
+            if (v == null) return "";
+            if (v >= 2) return "very-good"; if (v >= 0) return "good";
+            if (v >= -2) return "bad"; return "very-bad";
+        }
+        function cell(c) {
+            if (!c) return '<span class="no-data">-</span>';
+            const low = c.note ? " low-sample" : "";
+            return `<span class="delta ${dCls(c.d2)}">${fmtDelta(c.d2)}</span>
+                    <span class="wr-small">${c.winrate.toFixed(2)}%</span>
+                    <span class="games-small${low}">${fmtGames(c.games)}</span>`;
+        }
+
+        function buildBanSlots() {
+            const container = document.getElementById("ban-slots");
+            container.innerHTML = "";
+            for (let i = 1; i <= 10; i++) {
+                container.innerHTML += `
+                    <div class="role-slot ban-slot" data-ban-idx="${i}">
+                        <div class="select-wrapper ban-wrapper">
+                            <img class="champ-icon-select" src="" alt="">
+                            <select><option value="">-</option>
+                                ${ALL_CHAMPS.map(n => `<option value="${n}">${n}</option>`).join("")}
+                            </select>
+                        </div>
+                    </div>`;
+            }
+            container.querySelectorAll("select").forEach(sel => {
+                sel.addEventListener("change", () => {
+                    const icon = sel.closest(".role-slot").querySelector(".champ-icon-select");
+                    icon.src = sel.value ? iconUrl(sel.value) : "";
+                    icon.style.display = sel.value ? "block" : "none";
+                    fetchRecommendations();
+                });
+            });
+        }
+
+        function buildAllySlots() {
+            const myAlly = ROLE_TO_ALLY[pickingRole];
+            const container = document.getElementById("ally-slots");
+            container.innerHTML = "";
+
+            ALL_ROLES.forEach(role => {
+                const allyKey = ROLE_TO_ALLY[role];
+                if (allyKey === myAlly) return;
+                const pool = POOLS[role] || {};
+                const names = Object.values(pool).sort();
+                const label = ROLE_LABELS[role];
+
+                container.innerHTML += `
+                    <div class="role-slot" data-key="${allyKey}">
+                        <div class="role-icon">${label}</div>
+                        <div class="select-wrapper">
+                            <img class="champ-icon-select" src="" alt="">
+                            <select><option value="">-</option>
+                                ${names.map(n => `<option value="${n}">${n}</option>`).join("")}
+                            </select>
+                        </div>
+                    </div>`;
+            });
+
+            container.querySelectorAll("select").forEach(sel => {
+                sel.addEventListener("change", () => {
+                    const icon = sel.closest(".role-slot").querySelector(".champ-icon-select");
+                    icon.src = sel.value ? iconUrl(sel.value) : "";
+                    icon.style.display = sel.value ? "block" : "none";
+                    fetchRecommendations();
+                });
+            });
+        }
+
+        function buildEnemySlots() {
+            const container = document.getElementById("enemy-slots");
+            container.innerHTML = "";
+
+            for (let i = 1; i <= 5; i++) {
+                container.innerHTML += `
+                    <div class="role-slot enemy-slot" data-enemy-idx="${i}">
+                        <div class="role-icon predicted-role" id="enemy-role-${i}">?</div>
+                        <div class="select-wrapper">
+                            <img class="champ-icon-select" src="" alt="">
+                            <select><option value="">-</option>
+                                ${ALL_CHAMPS.map(n => `<option value="${n}">${n}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div class="role-tooltip" id="enemy-tooltip-${i}"></div>
+                    </div>`;
+            }
+
+            container.querySelectorAll("select").forEach(sel => {
+                sel.addEventListener("change", () => {
+                    const icon = sel.closest(".role-slot").querySelector(".champ-icon-select");
+                    icon.src = sel.value ? iconUrl(sel.value) : "";
+                    icon.style.display = sel.value ? "block" : "none";
+                    fetchRecommendations();
+                });
+            });
+        }
+
+        function updateEnemyRoleLabels(enemyRoles) {
+            lastEnemyRoles = enemyRoles;
+            document.querySelectorAll(".enemy-slot").forEach(slot => {
+                const idx = slot.dataset.enemyIdx;
+                const sel = slot.querySelector("select");
+                const champ = sel.value;
+                const roleEl = document.getElementById(`enemy-role-${idx}`);
+                const tooltipEl = document.getElementById(`enemy-tooltip-${idx}`);
+
+                if (champ && enemyRoles[champ]) {
+                    const info = enemyRoles[champ];
+                    roleEl.textContent = ROLE_LABELS[info.predicted] || "?";
+                    roleEl.className = "role-icon predicted-role has-prediction";
+
+                    // Build tooltip
+                    const lines = Object.entries(info.probs)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([r, p]) => `${ROLE_LABELS_FULL[r]}: ${(p * 100).toFixed(1)}%`)
+                        .join("\n");
+                    tooltipEl.textContent = lines;
+                } else {
+                    roleEl.textContent = "?";
+                    roleEl.className = "role-icon predicted-role";
+                    tooltipEl.textContent = "";
+                }
+            });
+        }
+
+        function buildWeights() {
+            const container = document.getElementById("weights-container");
+            const w = DEFAULT_WEIGHTS[pickingRole] || {};
+            const ROLE_ORDER = ["top", "jungle", "mid", "adc", "support"];
+            const KEY_LABEL = {top:"Top", jungle:"Jungle", mid:"Mid", adc:"ADC", support:"Support"};
+
+            let enemyHtml = '<div class="weights-section"><h4 class="enemy-label">vs Enemies</h4>';
+            let allyHtml = '<div class="weights-section"><h4 class="ally-label">with Allies</h4>';
+
+            for (const role of ROLE_ORDER) {
+                const enemyKey = "enemy_" + role;
+                const allyKey = "ally_" + role;
+                const label = KEY_LABEL[role];
+
+                if (enemyKey in w) {
+                    const pct = (w[enemyKey] * 100).toFixed(2);
+                    const sliderVal = Math.round(w[enemyKey] * 100);
+                    enemyHtml += `<div class="weight-row">
+                        <label>${label}</label>
+                        <input type="range" min="0" max="100" value="${sliderVal}" data-weight="${enemyKey}" data-exact="${w[enemyKey]}" class="weight-slider">
+                        <span class="weight-value">${pct}%</span>
+                    </div>`;
+                }
+                if (allyKey in w) {
+                    const pct = (w[allyKey] * 100).toFixed(2);
+                    const sliderVal = Math.round(w[allyKey] * 100);
+                    allyHtml += `<div class="weight-row">
+                        <label>${label}</label>
+                        <input type="range" min="0" max="100" value="${sliderVal}" data-weight="${allyKey}" data-exact="${w[allyKey]}" class="weight-slider">
+                        <span class="weight-value">${pct}%</span>
+                    </div>`;
+                }
+            }
+            enemyHtml += "</div>"; allyHtml += "</div>";
+            container.innerHTML = enemyHtml + allyHtml;
+
+            document.querySelectorAll(".weight-slider").forEach(s => {
+                s.addEventListener("input", () => {
+                    s.dataset.exact = parseInt(s.value) / 100;
+                    s.nextElementSibling.textContent = (parseInt(s.value)).toFixed(2) + "%";
+                    fetchRecommendations();
+                });
+            });
+        }
+
+        function getWeights() {
+            const w = {};
+            document.querySelectorAll(".weight-slider").forEach(s => {
+                const exact = parseFloat(s.dataset.exact);
+                const sliderVal = parseInt(s.value) / 100;
+                w["w_" + s.dataset.weight] = (Math.round(exact * 100) === parseInt(s.value)) ? exact : sliderVal;
+            });
+            return w;
+        }
+
+        async function fetchRecommendations() {
+            const weights = getWeights();
+            const tier = document.getElementById("tier-select").value;
+            const bidi = document.getElementById("bidirectional").checked;
+
+            // Collect ally inputs
+            const allyInputs = {};
+            document.querySelectorAll("#ally-slots .role-slot").forEach(s => {
+                const v = s.querySelector("select").value;
+                if (v) allyInputs[s.dataset.key] = v;
+            });
+
+            // Collect enemy inputs
+            const enemyInputs = {};
+            document.querySelectorAll(".enemy-slot").forEach(s => {
+                const v = s.querySelector("select").value;
+                if (v) enemyInputs[`enemy_${s.dataset.enemyIdx}`] = v;
+            });
+
+            // Collect bans
+            const banInputs = {};
+            document.querySelectorAll(".ban-slot").forEach(s => {
+                const v = s.querySelector("select").value;
+                if (v) banInputs[`ban_${s.dataset.banIdx}`] = v;
+            });
+
+            const params = new URLSearchParams({
+                tier, picking_role: pickingRole, bidirectional: bidi,
+                ...allyInputs, ...enemyInputs, ...banInputs, ...weights
+            });
+
+            const resp = await fetch(`/recommend?${params}`);
+            const data = await resp.json();
+            if (data.error) return;
+
+            // Update enemy role predictions
+            updateEnemyRoleLabels(data.enemy_roles || {});
+
+            const isBlind = data.mode === "blind";
+            const roleLabel = ROLE_LABELS[pickingRole];
+
+            document.getElementById("results-title").textContent =
+                isBlind ? `Blind Pick ${roleLabel} Tier List` : `Recommended ${roleLabel} Picks`;
+
+            // Determine columns: ally slots that are filled + enemy champs
+            const allyCols = Object.keys(allyInputs);
+            const enemyCols = isBlind ? [] : Object.values(enemyInputs).map(n => `enemy_${n}`);
+
+            // Build header
+            const thead = document.getElementById("results-head");
+            let headerCols = "";
+            if (!isBlind) {
+                for (const k of allyCols) {
+                    const role = k.replace("ally_", "");
+                    headerCols += `<th class="detail-col">w/ ${ROLE_LABELS_FULL[role] || role}</th>`;
+                }
+                for (const name of Object.values(enemyInputs)) {
+                    const info = data.enemy_roles?.[name];
+                    const roleTag = info ? ` (${ROLE_LABELS[info.predicted]})` : "";
+                    headerCols += `<th class="detail-col">vs ${name}${roleTag}</th>`;
+                }
+            }
+
+            thead.innerHTML = `<tr>
+                <th class="rank-col">#</th>
+                <th class="champ-col">Champion</th>
+                <th class="wr-col">WR</th>
+                <th class="pr-col">PR</th>
+                <th class="br-col">BR</th>
+                <th class="score-col">Score</th>
+                ${headerCols}
+                ${isBlind ? "" : '<th class="coverage-col">Data</th>'}
+                <th class="build-col">Build</th>
+            </tr>`;
+
+            // Build rows
+            const tbody = document.getElementById("results-body");
+            tbody.innerHTML = "";
+            const enemySup = Object.values(enemyInputs).find(n => {
+                const info = data.enemy_roles?.[n];
+                return info && info.predicted === "support";
+            }) || "";
+
+            data.recommendations.forEach((rec, i) => {
+                const ds = isBlind ? rec.score : (rec.rank_value ?? rec.score);
+                let detailCells = "";
+                if (!isBlind) {
+                    for (const k of allyCols) {
+                        detailCells += `<td class="detail-col">${cell(rec.components[k])}</td>`;
+                    }
+                    for (const name of Object.values(enemyInputs)) {
+                        detailCells += `<td class="detail-col">${cell(rec.components[`enemy_${name}`])}</td>`;
+                    }
+                }
+
+                const tr = document.createElement("tr");
+                tr.classList.add("clickable-row");
+                tr.dataset.champion = rec.champion;
+                tr.innerHTML = `
+                    <td class="rank-col">${i+1}</td>
+                    <td class="champ-col">
+                        <img src="${iconUrl(rec.champion)}" class="champ-icon" alt="" onerror="this.style.display='none'">
+                        <span>${rec.champion}</span>
+                    </td>
+                    <td class="wr-col">${rec.overall_wr ? rec.overall_wr.toFixed(2)+"%" : ""}</td>
+                    <td class="pr-col">${rec.pick_rate ? rec.pick_rate.toFixed(1)+"%" : ""}</td>
+                    <td class="br-col">${rec.ban_rate ? rec.ban_rate.toFixed(1)+"%" : ""}</td>
+                    <td class="score-col"><span class="score ${dCls(ds)}">${fmtDelta(ds)}</span></td>
+                    ${detailCells}
+                    ${isBlind ? "" : `<td class="coverage-col">${rec.data_coverage}%</td>`}
+                    <td class="build-col"><a href="${buildUrl(rec.champion, enemySup)}" target="_blank" class="build-link" onclick="event.stopPropagation()">LoL</a></td>
+                `;
+                tr.addEventListener("click", () => {
+                    document.querySelectorAll(".clickable-row").forEach(r => r.classList.remove("selected"));
+                    tr.classList.add("selected");
+                    selectChampForBuild(rec.champion);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Role buttons
+        document.querySelectorAll(".role-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                document.querySelectorAll(".role-btn").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                pickingRole = btn.dataset.role;
+                buildAllySlots();
+                buildWeights();
+                fetchRecommendations();
+            });
+        });
+
+        document.getElementById("tier-select").addEventListener("change", fetchRecommendations);
+        document.getElementById("bidirectional").addEventListener("change", fetchRecommendations);
+
+        // LCU integration - auto-read picks/bans from League client
+        let lcuPolling = null;
+        let lcuConnected = false;
+
+        function setSelectValue(selectEl, value) {
+            if (!selectEl || selectEl.value === value) return false;
+            // Find the option
+            for (const opt of selectEl.options) {
+                if (opt.value === value) {
+                    selectEl.value = value;
+                    const icon = selectEl.closest(".role-slot")?.querySelector(".champ-icon-select");
+                    if (icon) {
+                        icon.src = value ? iconUrl(value) : "";
+                        icon.style.display = value ? "block" : "none";
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        async function pollLcu() {
+            try {
+                const r = await fetch("/lcu/session");
+                const d = await r.json();
+
+                if (d.status !== "in_select") {
+                    const msg = d.status === "no_session" ? "Waiting for champ select..." : "Client not found";
+                    document.getElementById("lcu-status").textContent = msg;
+                    document.getElementById("lcu-status").className = "lcu-status disconnected";
+                    lcuConnected = false;
+                    return;
+                }
+
+                lcuConnected = true;
+                document.getElementById("lcu-status").textContent = "Live: reading from client";
+                document.getElementById("lcu-status").className = "lcu-status connected";
+
+                let changed = false;
+
+                // Fill bans
+                const banSlots = document.querySelectorAll(".ban-slot select");
+                let banIdx = 0;
+                for (const ban of d.bans) {
+                    if (banIdx < banSlots.length) {
+                        if (setSelectValue(banSlots[banIdx], ban)) changed = true;
+                        banIdx++;
+                    }
+                }
+
+                // Fill ally team using assigned positions
+                const posToAllyKey = {top:"ally_top", jungle:"ally_jungle", middle:"ally_mid", bottom:"ally_adc", support:"ally_support"};
+                for (const member of d.my_team) {
+                    if (member.is_me || !member.champion) continue;
+                    const allyKey = posToAllyKey[member.assigned_position];
+                    if (allyKey) {
+                        const slot = document.querySelector(`#ally-slots .role-slot[data-key="${allyKey}"] select`);
+                        if (slot && setSelectValue(slot, member.champion)) changed = true;
+                    }
+                }
+
+                // Fill enemy team
+                const enemySlots = document.querySelectorAll(".enemy-slot select");
+                let enemyIdx = 0;
+                for (const member of d.their_team) {
+                    if (!member.champion) continue;
+                    if (enemyIdx < enemySlots.length) {
+                        if (setSelectValue(enemySlots[enemyIdx], member.champion)) changed = true;
+                        enemyIdx++;
+                    }
+                }
+
+                if (changed) fetchRecommendations();
+
+                // Auto-fetch build when all enemies + our pick are confirmed
+                checkAutoFetchBuild(d);
+            } catch (e) {
+                // silently ignore connection errors
+            }
+        }
+
+        function toggleLcu() {
+            if (lcuPolling) {
+                clearInterval(lcuPolling);
+                lcuPolling = null;
+                document.getElementById("lcu-btn").textContent = "Connect";
+                document.getElementById("lcu-status").textContent = "Disconnected";
+                document.getElementById("lcu-status").className = "lcu-status disconnected";
+            } else {
+                pollLcu(); // immediate first poll
+                lcuPolling = setInterval(pollLcu, 2000); // poll every 2s
+                document.getElementById("lcu-btn").textContent = "Disconnect";
+                document.getElementById("lcu-status").textContent = "Connecting...";
+                document.getElementById("lcu-status").className = "lcu-status";
+            }
+        }
+
+        // Rune name mapping (ID -> display name)
+        const RUNE_NAMES = {};  // Will be populated from DDragon if needed
+        const TREE_ICONS = {
+            1: "Precision", 2: "Sorcery", 3: "Resolve", 4: "Inspiration", 5: "Domination"
+        };
+
+        let lastBuildKey = "";
+
+        async function fetchBuild(champion, lane, enemies) {
+            // enemies = [{name, lane}, ...]
+            const params = new URLSearchParams({
+                champion, lane,
+                tier: document.getElementById("tier-select").value
+            });
+            enemies.forEach((e, i) => {
+                params.set(`enemy_${i+1}`, e.name);
+                params.set(`enemy_${i+1}_lane`, e.lane);
+            });
+
+            const buildKey = params.toString();
+            if (buildKey === lastBuildKey) return;  // avoid re-fetch
+            lastBuildKey = buildKey;
+
+            const panel = document.getElementById("build-panel");
+            const content = document.getElementById("build-content");
+            document.getElementById("build-title").textContent = `Optimal Build for ${champion}`;
+            content.innerHTML = '<span class="loading">Calculating...</span>';
+            panel.classList.remove("hidden");
+
+            try {
+                const r = await fetch(`/build-calc?${params}`);
+                const d = await r.json();
+                if (d.error) {
+                    content.innerHTML = `<span class="no-data">${d.error}</span>`;
+                    return;
+                }
+                renderBuild(d, content);
+            } catch (e) {
+                content.innerHTML = '<span class="no-data">Failed to fetch build</span>';
+            }
+        }
+
+        function runeIconUrl(runeId) {
+            // Stat shards (5xxx) use a different CDN path
+            if (String(runeId).startsWith('5')) {
+                return `https://cdn5.lolalytics.com/statmod32/${runeId}.webp`;
+            }
+            return `https://cdn5.lolalytics.com/rune68/${runeId}.webp`;
+        }
+
+        function renderBuild(data, container) {
+            const opt = data.optimal_runes;
+            if (!opt) {
+                container.innerHTML = '<span class="no-data">Not enough data</span>';
+                return;
+            }
+
+            let html = '<div class="build-grid">';
+
+            // Runes section
+            html += '<div class="build-section"><h3>Runes</h3><div class="rune-page">';
+            html += `<div class="rune-tree"><span class="tree-label">${opt.primary_tree_name}</span>`;
+            for (const rid of opt.primary_runes) {
+                if (rid) html += `<img src="${runeIconUrl(rid)}" class="rune-icon pri-rune" title="${rid}">`;
+            }
+            html += '</div>';
+            html += `<div class="rune-tree"><span class="tree-label">${opt.secondary_tree_name || "?"}</span>`;
+            for (const rid of opt.secondary_runes) {
+                if (rid) html += `<img src="${runeIconUrl(rid)}" class="rune-icon sec-rune" title="${rid}">`;
+            }
+            html += '</div>';
+            html += '<div class="rune-tree"><span class="tree-label">Shards</span>';
+            for (const rid of (opt.shards || [])) {
+                if (rid) html += `<img src="${runeIconUrl(rid)}" class="rune-icon shard" title="${rid}">`;
+            }
+            html += '</div></div></div>';
+
+            // Per-enemy breakdown
+            html += '<div class="build-section"><h3>Per Enemy</h3><div class="per-enemy-list">';
+            for (const e of data.per_enemy_builds || []) {
+                const runes = e.runes?.set?.pri || [];
+                const ks = runes[0];
+                const wr = e.runes?.wr;
+                html += `<div class="per-enemy-row">`;
+                html += `<span class="per-enemy-name">vs ${e.enemy} (${e.enemy_lane})</span>`;
+                if (ks) html += `<img src="${runeIconUrl(ks)}" class="rune-icon-sm" title="Keystone ${ks}">`;
+                if (wr) html += `<span class="per-enemy-wr">${wr.toFixed(1)}%</span>`;
+                html += `<span class="per-enemy-games">${fmtGames(e.n)}</span>`;
+                html += '</div>';
+            }
+            html += '</div></div>';
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function selectChampForBuild(champName) {
+            const enemies = [];
+            document.querySelectorAll(".enemy-slot").forEach(slot => {
+                const name = slot.querySelector("select").value;
+                if (name) {
+                    const roleEl = slot.querySelector(".predicted-role");
+                    const roleLbl = roleEl?.textContent || "?";
+                    const laneMap = {TOP:"top", JNG:"jungle", MID:"middle", ADC:"bottom", SUP:"support"};
+                    enemies.push({name, lane: laneMap[roleLbl] || "support"});
+                }
+            });
+
+            if (enemies.length === 0) return;
+            fetchBuild(champName, pickingRole, enemies);
+        }
+
+        function hideBuild() {
+            document.getElementById("build-panel").classList.add("hidden");
+            lastBuildKey = "";
+        }
+
+        // Check if we should auto-fetch build (called from LCU poller)
+        function checkAutoFetchBuild(lcuData) {
+            if (!lcuData.all_enemies_picked || !lcuData.my_pick_confirmed) return;
+
+            const me = lcuData.my_team.find(m => m.is_me);
+            if (!me || !me.picked) return;
+
+            // Get enemy role predictions from current recommendations
+            const enemies = lcuData.their_team
+                .filter(m => m.champion)
+                .map(m => ({name: m.champion, lane: "support"}));  // default lane, will be overridden
+
+            // We need predicted lanes - get them from the last recommendation response
+            if (lastEnemyRoles && Object.keys(lastEnemyRoles).length > 0) {
+                for (const e of enemies) {
+                    const info = lastEnemyRoles[e.name];
+                    if (info) e.lane = info.predicted;
+                }
+            }
+
+            // Find my assigned position
+            const myLane = me.assigned_position || pickingRole;
+
+            fetchBuild(me.picked, myLane, enemies);
+        }
+
+        // Init
+        buildBanSlots();
+        buildAllySlots();
+        buildEnemySlots();
+        buildWeights();
+        fetchRecommendations();
+    </script>
+</body>
+</html>
