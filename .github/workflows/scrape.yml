@@ -2,8 +2,8 @@ name: Scrape lolalytics data
 
 on:
   schedule:
-    # Every Monday at 06:00 UTC
-    - cron: "0 6 * * 1"
+    # Mondays and Thursdays at 06:00 UTC
+    - cron: "0 6 * * 1,4"
   workflow_dispatch:
     inputs:
       tier:
