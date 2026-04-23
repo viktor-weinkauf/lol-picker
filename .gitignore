@@ -16,3 +16,5 @@ data/build_cache/
 .idea/
 .DS_Store
 Thumbs.db
+
+.claude/

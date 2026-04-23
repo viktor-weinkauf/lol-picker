@@ -965,7 +965,61 @@ def seed_bundled_data():
         print(f"[seed] copied bundled data to {DATA_ROOT}")
 
 
+def redirect_output_to_logfile():
+    """When running as a windowed exe, send stdout/stderr to a log file
+    next to the exe so errors aren't silently lost."""
+    if not getattr(sys, "frozen", False):
+        return
+    log_path = os.path.join(BASE_DIR, "lolpicker.log")
+    log = open(log_path, "w", encoding="utf-8", buffering=1)
+    sys.stdout = log
+    sys.stderr = log
+
+
+def open_browser_delayed(url="http://127.0.0.1:5000", delay=1.2):
+    """Open the default browser once the Flask server has had time to bind."""
+    import threading
+    import webbrowser
+    threading.Timer(delay, lambda: webbrowser.open(url)).start()
+
+
+def _make_tray_image():
+    """Load the tray icon from bundled assets, with a minimal fallback."""
+    from PIL import Image, ImageDraw
+    path = os.path.join(BUNDLE_DIR, "assets", "tray.png")
+    if os.path.exists(path):
+        return Image.open(path)
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    ImageDraw.Draw(img).rectangle([8, 8, 56, 56], outline="white", width=3)
+    return img
+
+
+def run_tray_icon(url="http://127.0.0.1:5000"):
+    """Blocking: show a system tray icon with Open/Quit actions until Quit is clicked."""
+    import webbrowser
+    import pystray
+
+    def on_open(icon, item):
+        webbrowser.open(url)
+
+    def on_quit(icon, item):
+        icon.stop()
+        os._exit(0)
+
+    icon = pystray.Icon(
+        "LoLPicker",
+        _make_tray_image(),
+        "LoL Picker",
+        menu=pystray.Menu(
+            pystray.MenuItem("Open picker", on_open, default=True),
+            pystray.MenuItem("Quit", on_quit),
+        ),
+    )
+    icon.run()
+
+
 if __name__ == "__main__":
+    redirect_output_to_logfile()
     seed_bundled_data()
     sync_data_from_github()
     tiers = available_tiers()
@@ -975,5 +1029,15 @@ if __name__ == "__main__":
             print(f"Data: {tiers[0]} | {d['meta']['patch']} days | {d['meta'].get('viable_pairs', '?')} pairs")
     else:
         print("No data. Run: python scrape_data.py")
-    debug_mode = not getattr(sys, "frozen", False)
-    app.run(debug=debug_mode, port=5000, use_reloader=False)
+
+    frozen = getattr(sys, "frozen", False)
+    if frozen:
+        import threading
+        threading.Thread(
+            target=lambda: app.run(debug=False, port=5000, use_reloader=False),
+            daemon=True,
+        ).start()
+        open_browser_delayed()
+        run_tray_icon()
+    else:
+        app.run(debug=True, port=5000, use_reloader=False)

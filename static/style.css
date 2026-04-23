@@ -115,24 +115,6 @@ header h1 {
     accent-color: #c89b3c;
 }
 
-.lcu-btn {
-    background: #161b22;
-    border: 1px solid #30363d;
-    color: #3fb950;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 5px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    margin-left: 8px;
-    transition: all 0.15s;
-}
-
-.lcu-btn:hover {
-    border-color: #3fb950;
-    background: #0d1117;
-}
-
 .lcu-status {
     font-size: 11px;
     margin-left: 6px;

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LoL Champion Picker</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -37,8 +38,7 @@
                 <input type="checkbox" id="bidirectional" checked>
                 2-sided
             </label>
-            <button class="lcu-btn" id="lcu-btn" onclick="toggleLcu()">Connect</button>
-            <span class="lcu-status disconnected" id="lcu-status">Disconnected</span>
+            <span class="lcu-status disconnected" id="lcu-status">Connecting to League client...</span>
         </div>
 
         <!-- Bans -->
@@ -432,7 +432,6 @@
         document.getElementById("bidirectional").addEventListener("change", fetchRecommendations);
 
         // LCU integration - auto-read picks/bans from League client
-        let lcuPolling = null;
         let lcuConnected = false;
 
         function setSelectValue(selectEl, value) {
@@ -509,22 +508,6 @@
                 checkAutoFetchBuild(d);
             } catch (e) {
                 // silently ignore connection errors
-            }
-        }
-
-        function toggleLcu() {
-            if (lcuPolling) {
-                clearInterval(lcuPolling);
-                lcuPolling = null;
-                document.getElementById("lcu-btn").textContent = "Connect";
-                document.getElementById("lcu-status").textContent = "Disconnected";
-                document.getElementById("lcu-status").className = "lcu-status disconnected";
-            } else {
-                pollLcu(); // immediate first poll
-                lcuPolling = setInterval(pollLcu, 2000); // poll every 2s
-                document.getElementById("lcu-btn").textContent = "Disconnect";
-                document.getElementById("lcu-status").textContent = "Connecting...";
-                document.getElementById("lcu-status").className = "lcu-status";
             }
         }
 
@@ -677,6 +660,8 @@
         buildEnemySlots();
         buildWeights();
         fetchRecommendations();
+        pollLcu();
+        setInterval(pollLcu, 2000);
     </script>
 </body>
 </html>
