@@ -36,6 +36,9 @@ ROLES = ["top", "jungle", "middle", "bottom", "support"]
 ALLY_SLOT = {"top": "ally_top", "jungle": "ally_jungle", "middle": "ally_mid",
              "bottom": "ally_adc", "support": "ally_support"}
 
+ENEMY_WEIGHT_KEY = {"top": "enemy_top", "jungle": "enemy_jungle", "middle": "enemy_mid",
+                    "bottom": "enemy_adc", "support": "enemy_support"}
+
 # Data-driven weights: how much each interaction matters when picking for a role
 DEFAULT_WEIGHTS = {
     "top":     {"enemy_top": 0.1655, "enemy_jungle": 0.1025, "enemy_mid": 0.1163, "enemy_adc": 0.0985, "enemy_support": 0.1041,
@@ -107,26 +110,11 @@ def predict_enemy_roles(enemy_champs, lane_dist):
         # Single champion: just return their lane distribution
         return {enemy_champs[0]: champ_lanes[enemy_champs[0]]}
 
-    # For 2-5 champions: find the optimal assignment via brute force
-    # (at most 5! = 120 permutations, very fast)
-    best_assignment = None
-    best_score = -1
-
+    # For 2-5 champions: per-champion role marginals via brute force over
+    # all role permutations (at most 5! = 120, very fast), weighted by
+    # joint probability under an independence assumption.
     champs = list(enemy_champs)
     n = len(champs)
-    available_roles = ROLES[:n] if n <= 5 else ROLES
-
-    for perm in permutations(ROLES, n):
-        score = 1.0
-        for champ, role in zip(champs, perm):
-            p = champ_lanes[champ].get(role, 0)
-            score *= max(p, 0.001)  # avoid zero
-        if score > best_score:
-            best_score = score
-            best_assignment = dict(zip(champs, perm))
-
-    # Also compute per-champion role probabilities (marginals)
-    # by summing over all valid assignments weighted by their probability
     role_probs = {champ: {r: 0.0 for r in ROLES} for champ in champs}
     total_weight = 0.0
 
@@ -149,11 +137,12 @@ def predict_enemy_roles(enemy_champs, lane_dist):
 def ban_adjusted_wr(champ_name, picking_role, bans, data):
     """
     Recalculate a champion's effective WR after removing banned champions' games.
-    Applied independently per enemy role (each role is a separate decomposition
-    of the overall WR), then averaged.
+    Per-role adjustments are summed (each enemy role is an independent encounter,
+    so lifts add rather than average).
 
     Per role: adjusted_wr_role = (wr - norm_pr * wr_vs) / (1 - norm_pr)
-    where norm_pr = champion's PR / sum(all PRs in that role) = true encounter rate
+    where norm_pr = champion's PR / sum(all PRs in that role) = true encounter rate.
+    Bans without matchup data are skipped so they don't bias the denominator.
     """
     champ_overall = data.get("overall", {}).get(picking_role, {}).get(champ_name, {})
     base_wr = champ_overall.get("wr", 50)
@@ -164,9 +153,7 @@ def ban_adjusted_wr(champ_name, picking_role, bans, data):
     all_overall = data.get("overall", {})
     ban_set = set(bans)
 
-    # Apply ban adjustment independently per enemy role
     total_adjustment = 0.0
-    n_adjustments = 0
 
     for role in ROLES:
         role_overall = all_overall.get(role, {})
@@ -175,7 +162,6 @@ def ban_adjusted_wr(champ_name, picking_role, bans, data):
         if total_role_pr <= 0:
             continue
 
-        # Sum normalized PR of banned champs in this role
         removed_pr = 0.0
         removed_wr_contribution = 0.0
 
@@ -185,21 +171,17 @@ def ban_adjusted_wr(champ_name, picking_role, bans, data):
             if raw_pr <= 0:
                 continue
 
-            norm_pr = raw_pr / total_role_pr  # true encounter rate
             matchup = champ_counters.get(role, {}).get(banned, {})
-            if matchup.get("n", 0) >= MIN_GAMES:
-                wr_vs = matchup["vsWr"]
-            else:
-                wr_vs = base_wr  # no data = no effect
+            if matchup.get("n", 0) < MIN_GAMES:
+                continue  # skip: no reliable matchup data
 
+            norm_pr = raw_pr / total_role_pr  # true encounter rate
             removed_pr += norm_pr
-            removed_wr_contribution += norm_pr * wr_vs
+            removed_wr_contribution += norm_pr * matchup["vsWr"]
 
         if removed_pr > 0 and removed_pr < 1.0:
-            # This role's contribution to WR adjustment
             role_adjusted = (base_wr - removed_wr_contribution) / (1.0 - removed_pr)
             total_adjustment += role_adjusted - base_wr
-            n_adjustments += 1
 
     return base_wr + total_adjustment
 
@@ -245,7 +227,9 @@ def score_champion(champ_name, picking_role, ally_inputs, enemy_champs, enemy_ro
             if fwd_d2 is not None and rev_d2 is not None:
                 d2 = (fwd_d2 + rev_d2) / 2
                 wr = (fwd_wr + rev["wr"]) / 2
-                n = fwd_n + rev_n
+                # fwd and rev sample the same games from mirrored POVs,
+                # so take the larger n instead of summing
+                n = max(fwd_n, rev_n)
             elif fwd_d2 is not None:
                 d2, wr, n = fwd_d2, fwd_wr, fwd_n
             elif rev_d2 is not None:
@@ -264,9 +248,6 @@ def score_champion(champ_name, picking_role, ally_inputs, enemy_champs, enemy_ro
             components[slot_key] = {"d2": fwd["d2"], "winrate": fwd["wr"], "games": fwd["n"], "weight": 0, "note": "low sample"}
 
     # --- Enemy counter (probabilistic roles) ---
-    enemy_weight_map = {"top": "enemy_top", "jungle": "enemy_jungle", "middle": "enemy_mid",
-                        "bottom": "enemy_adc", "support": "enemy_support"}
-
     for enemy_name in enemy_champs:
         probs = enemy_role_probs.get(enemy_name, {})
 
@@ -280,7 +261,7 @@ def score_champion(champ_name, picking_role, ally_inputs, enemy_champs, enemy_ro
         for enemy_role, prob in probs.items():
             if prob < 0.01:
                 continue
-            weight_key = enemy_weight_map[enemy_role]
+            weight_key = ENEMY_WEIGHT_KEY[enemy_role]
             base_weight = weights.get(weight_key, 0)
             effective_weight = base_weight * prob
 
@@ -295,8 +276,10 @@ def score_champion(champ_name, picking_role, ally_inputs, enemy_champs, enemy_ro
                 rev_n = rev["n"] if rev else 0
                 if fwd_d2 is not None and rev_d2 is not None:
                     d2 = (fwd_d2 + rev_d2) / 2
-                    wr = fwd_wr
-                    n = fwd_n + rev_n
+                    wr = (fwd_wr + (100 - rev["vsWr"])) / 2
+                    # fwd and rev sample the same games from mirrored POVs,
+                    # so take the larger n instead of summing
+                    n = max(fwd_n, rev_n)
                 elif fwd_d2 is not None:
                     d2, wr, n = fwd_d2, fwd_wr, fwd_n
                 elif rev_d2 is not None:
@@ -416,7 +399,12 @@ def recommend():
 
     pool = data["champions"]["pools"].get(picking_role, {})
     overall = data.get("overall", {}).get(picking_role, {})
-    avg_wr = next(iter(overall.values()), {}).get("avgWr", 50) if overall else 50
+    # PR-weighted mean WR in this role — the expected WR of a typical game
+    total_pr = sum(s.get("pr", 0) for s in overall.values())
+    if overall and total_pr > 0:
+        avg_wr = sum(s.get("wr", 50) * s.get("pr", 0) for s in overall.values()) / total_pr
+    else:
+        avg_wr = 50
 
     # Filter to champions with statistically reliable data (>= 0.04% PR ≈ 10K+ games)
     viable_champs = set()
@@ -679,184 +667,735 @@ def fetch_vs_build(my_champ, my_lane, enemy_name, enemy_lane, tier, patch):
     return {"enemy": enemy_name, "enemy_lane": enemy_lane, "data": None, "cached": False}
 
 
-def combine_rune_stats(build_results):
-    """
-    Combine per-rune stats across multiple enemy matchups.
-    For each rune slot, find the rune with the highest average WR
-    weighted by game count across all matchups.
-    """
-    # Collect per-rune stats: rune_id -> {total_wr_weighted, total_n, appearances}
-    # Separate by slot (primary vs secondary usage)
-    combined = {"pri": {}, "sec": {}}
+def fetch_unconditioned_build(my_champ, my_lane, tier, patch):
+    """Fetch the champion-lane build with no enemy filter (for intrinsic stats)."""
+    my_slug = my_champ.lower().replace("'", "").replace(" ", "").replace(".", "")
+    cache_path = os.path.join(BUILD_CACHE_DIR,
+                              f"{my_slug}_{my_lane}_uncond_{tier}_{patch}.json")
+    cached = _load_from_cache(cache_path)
+    if cached:
+        return {"data": cached, "cached": True}
 
-    for result in build_results:
+    params = {
+        "ep": "build-full", "v": 1,
+        "c": my_slug, "lane": my_lane,
+        "tier": tier, "patch": patch,
+    }
+    try:
+        r = http_requests.get(A3_API, params=params, headers=A3_HEADERS, timeout=10)
+        data = r.json()
+        if data.get("summary"):
+            _save_to_cache(cache_path, data)
+            return {"data": data, "cached": False}
+    except Exception:
+        pass
+    return {"data": None, "cached": False}
+
+
+# Bayesian shrinkage: per-enemy rune/spell WRs are pulled toward the champion's
+# baseline WR (or rune's intrinsic WR) with prior strength K. n=K → half-trusted;
+# n>>K → fully trusted.
+# K=1000 derived empirically (calibrate_shrink_k.py): the observed variance of
+# matchup-specific shifts (after subtracting binomial sample noise) is ~2.4 pp²
+# across 195 (champ, rune) pairs. From the Beta-Binomial relation
+# prior_var = baseline*(100-baseline)/(K+1), this gives K ≈ 1040.
+SHRINK_K = 1000
+# Minimum aggregate pick rate (%) for a summoner pair to be eligible
+MIN_PAIR_PR = 3.0
+# Per-matchup minimum pick rate / sample size for a rune entry to enter aggregation.
+# Keystones below ~15% PR are dominated by skilled-player self-selection (players
+# who deliberately deviate from the meta tend to be above-average), inflating
+# the rune's apparent WR. Minors/shards have weaker selection bias since they're
+# more interchangeable, so a softer 5% threshold is OK.
+MIN_RUNE_PR = 5.0
+MIN_KEYSTONE_PR = 15.0
+MIN_RUNE_N = 30
+_RIOT_RECOMMENDED_CACHE = None
+
+
+def _load_riot_recommended():
+    """Load the latest patch's Riot-recommended pages (or empty if missing)."""
+    global _RIOT_RECOMMENDED_CACHE
+    if _RIOT_RECOMMENDED_CACHE is not None:
+        return _RIOT_RECOMMENDED_CACHE
+    base = os.path.join(BASE_DIR, "data", "riot_recommended")
+    if not os.path.isdir(base):
+        _RIOT_RECOMMENDED_CACHE = {}
+        return _RIOT_RECOMMENDED_CACHE
+    patches = sorted(os.listdir(base))
+    for patch in reversed(patches):
+        p = os.path.join(base, patch, "runes.json")
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    _RIOT_RECOMMENDED_CACHE = json.load(f)
+                    return _RIOT_RECOMMENDED_CACHE
+            except Exception:
+                continue
+    _RIOT_RECOMMENDED_CACHE = {}
+    return _RIOT_RECOMMENDED_CACHE
+
+
+def get_recommended_perk_slots(champion_name, lane):
+    """Return {rune_stats_key (str): set of slots ('pri'|'sec')} for runes that
+    Riot recommends for this champ+lane, unioned across 1-3 recommended pages.
+
+    Each page's 9-element perks array maps to slots:
+      [0] keystone           → 'pri'
+      [1..3] primary minors  → 'pri'
+      [4..5] secondary minors→ 'sec'
+      [6] shard row 1        → 'pri'
+      [7] shard row 2 (flex) → 'pri', stored as '{id}f'
+      [8] shard row 3        → 'pri'
+
+    Used only for informational "differs from Riot's recommendation" flags
+    in hidden_gems analysis, not for scoring.
+    """
+    cache = _load_riot_recommended()
+    pages = cache.get("pages", {}).get(champion_name, {}).get(lane, [])
+    out = {}
+    for page in pages:
+        perks = page.get("perk_ids") or []
+        for i, pid in enumerate(perks):
+            if pid is None:
+                continue
+            if i in (4, 5):
+                slot = "sec"
+                key = str(pid)
+            elif i == 7:
+                slot = "pri"
+                key = f"{pid}f"
+            else:
+                slot = "pri"
+                key = str(pid)
+            out.setdefault(key, set()).add(slot)
+    return out
+
+
+def build_enemy_weights(my_lane, enemies):
+    """
+    Given picking lane and [(enemy_name, enemy_lane), ...], return a parallel list
+    of renormalized weights from DEFAULT_WEIGHTS[my_lane]. Sums to 1.
+    """
+    role_weights = DEFAULT_WEIGHTS.get(my_lane, {})
+    raw = []
+    for _, enemy_lane in enemies:
+        key = ENEMY_WEIGHT_KEY.get(enemy_lane)
+        raw.append(role_weights.get(key, 0.0) if key else 0.0)
+    total = sum(raw)
+    if total <= 0:
+        # Fallback: equal weights
+        return [1.0 / len(enemies)] * len(enemies) if enemies else []
+    return [w / total for w in raw]
+
+
+def _shrunk_delta(wr, n, baseline):
+    """Shrink wr toward baseline with prior strength SHRINK_K, then return delta."""
+    if n <= 0:
+        return 0.0
+    return (wr * n + baseline * SHRINK_K) / (n + SHRINK_K) - baseline
+
+
+def _modal_keystone(rune_stats, min_n=100):
+    """Return the rune_id (str) of the keystone with highest PR in this matchup."""
+    keystone_ids = [str(rid) for tree in RUNE_TREES.values() for rid in tree["rows"][0]]
+    best_pr = -1.0
+    best_id = None
+    for kid in keystone_ids:
+        info = rune_stats.get(kid)
+        if not info:
+            continue
+        entry = info[0] if isinstance(info, list) and info else None
+        if not entry or len(entry) < 3:
+            continue
+        pr, wr, n = entry
+        if n >= min_n and pr > best_pr:
+            best_pr = pr
+            best_id = kid
+    return best_id
+
+
+def combine_rune_stats(build_results, enemy_weights, unconditioned_data,
+                       champion_name=None, picking_lane=None):
+    """
+    Score each rune as: intrinsic_delta + Σ w_i × shrunk_matchup_shift_i
+
+    intrinsic_delta = shrink(wr − baseline)
+    matchup_shift_i = shrink(wr_i − wr_intrinsic)
+    """
+    rune_info = {"pri": {}, "sec": {}}
+    if not unconditioned_data:
+        return rune_info
+
+    keystone_set = {str(rid) for tree in RUNE_TREES.values() for rid in tree["rows"][0]}
+    intrinsic_baseline = unconditioned_data.get("avgWr", 50.0)
+    intrinsic_stats = unconditioned_data.get("runes", {}).get("stats", {})
+
+    # Riot's recommendation status — informational only, used by hidden_gems
+    # analysis to flag "our pick differs from Riot's".
+    if champion_name and picking_lane:
+        recommended_slots = get_recommended_perk_slots(champion_name, picking_lane)
+    else:
+        recommended_slots = {}
+
+    rune_intrinsic = {"pri": {}, "sec": {}}
+    for rune_id, entries in intrinsic_stats.items():
+        is_keystone = rune_id in keystone_set
+        min_pr = MIN_KEYSTONE_PR if is_keystone else MIN_RUNE_PR
+        for i, entry in enumerate(entries):
+            slot = "pri" if i == 0 else "sec"
+            pr, wr, n = entry
+            if n < MIN_RUNE_N:
+                continue
+            riot_recommended = slot in recommended_slots.get(rune_id, ())
+            rune_intrinsic[slot][rune_id] = {
+                "wr": wr,
+                "pr": pr,
+                "n": n,
+                "eligible": pr >= min_pr,
+                "recommended": riot_recommended,
+            }
+
+    rune_matchup = {"pri": {}, "sec": {}}
+    for result, weight in zip(build_results, enemy_weights):
         data = result.get("data")
-        if not data:
+        if not data or weight <= 0:
             continue
         rune_stats = data.get("runes", {}).get("stats", {})
         for rune_id, entries in rune_stats.items():
             for i, entry in enumerate(entries):
                 slot = "pri" if i == 0 else "sec"
-                pr, wr, n = entry
-                if n < 10:
+                if rune_id not in rune_intrinsic[slot]:
                     continue
-                if rune_id not in combined[slot]:
-                    combined[slot][rune_id] = {"total_wr_n": 0, "total_n": 0}
-                combined[slot][rune_id]["total_wr_n"] += wr * n
-                combined[slot][rune_id]["total_n"] += n
+                pr, wr, n = entry
+                if n < MIN_RUNE_N:
+                    continue
+                intrinsic_wr = rune_intrinsic[slot][rune_id]["wr"]
+                shrinkage = n / (n + SHRINK_K)
+                shrunk_shift = shrinkage * (wr - intrinsic_wr)
+                cell = rune_matchup[slot].setdefault(
+                    rune_id, {"shift": 0.0, "n": 0, "pr": 0.0, "weight": 0.0}
+                )
+                cell["shift"] += weight * shrunk_shift
+                cell["n"] += n
+                cell["pr"] += weight * pr
+                cell["weight"] += weight
 
-    # Calculate weighted average WR per rune per slot
-    rune_wrs = {"pri": {}, "sec": {}}
-    for slot in ["pri", "sec"]:
-        for rune_id, stats in combined[slot].items():
-            if stats["total_n"] > 0:
-                rune_wrs[slot][rune_id] = {
-                    "wr": round(stats["total_wr_n"] / stats["total_n"], 2),
-                    "n": stats["total_n"],
-                }
+    for slot in ("pri", "sec"):
+        for rune_id, intr in rune_intrinsic[slot].items():
+            raw_intrinsic_delta = intr["wr"] - intrinsic_baseline
+            intr_shrinkage = intr["n"] / (intr["n"] + SHRINK_K)
+            intrinsic_delta = intr_shrinkage * raw_intrinsic_delta
+            matchup = rune_matchup[slot].get(rune_id, {"shift": 0.0, "n": 0, "pr": 0.0})
+            total_delta = intrinsic_delta + matchup["shift"]
+            rune_info[slot][rune_id] = {
+                "delta": total_delta,
+                "intrinsic_delta": intrinsic_delta,
+                "matchup_shift": matchup["shift"],
+                "wr": intr["wr"],
+                "n": intr["n"] + matchup["n"],
+                "pr": intr["pr"],
+                "eligible": intr["eligible"],
+                "recommended": intr["recommended"],
+            }
+    return rune_info
 
-    return rune_wrs
 
-
-def build_optimal_rune_page(rune_wrs):
+def combine_summoner_pairs(build_results, enemy_weights):
     """
-    Given per-rune weighted WRs, construct the optimal rune page.
-    Uses knowledge of rune tree structure to pick the best keystone,
-    then best runes per row, then best secondary tree + runes, then shards.
+    Aggregate summoner-spell pair stats across enemy matchups.
+    Each build response has a `spells` list of [pair_id, wr, pr, n].
+    Returns {pair_id: {delta, wr, n, pr, pair: [sid1, sid2]}}.
     """
-    # Rune tree structure: tree_id -> [row0_keystones, row1, row2, row3]
-    TREES = {
-        1: {"name": "Precision", "rows": [
-            [8005, 8008, 8021, 8010],
-            [9101, 9111, 8009],
-            [9104, 9105, 9103],
-            [8014, 8017, 8299],
-        ]},
-        2: {"name": "Sorcery", "rows": [
-            [8214, 8229, 8230],
-            [8224, 8226, 8275],
-            [8210, 8234, 8233],
-            [8237, 8232, 8236],
-        ]},
-        3: {"name": "Resolve", "rows": [
-            [8437, 8439, 8465],
-            [8446, 8463, 8401],
-            [8429, 8444, 8473],
-            [8451, 8453, 8242],
-        ]},
-        4: {"name": "Inspiration", "rows": [
-            [8351, 8360, 8369],
-            [8306, 8304, 8313],
-            [8321, 8316, 8345],
-            [8347, 8352, 8410],
-        ]},
-        5: {"name": "Domination", "rows": [
-            [8112, 8128, 9923],
-            [8126, 8139, 8143],
-            [8137, 8140, 8141],
-            [8135, 8105, 8106],
-        ]},
-    }
-
-    SHARDS = {
-        "row1": [5008, 5005, 5007],
-        "row2": [5008, 5010, 5001],  # 5008f, 5010f, 5001f in API
-        "row3": [5011, 5013, 5001],
-    }
-
-    pri_stats = rune_wrs.get("pri", {})
-    sec_stats = rune_wrs.get("sec", {})
-
-    def best_rune(rune_ids, stats, min_n=1000):
-        """Pick the rune with highest WR from a list, requiring sufficient games."""
-        best = None
-        best_wr = -1
-        for rid in rune_ids:
-            info = stats.get(str(rid))
-            if info and info["wr"] > best_wr and info["n"] >= min_n:
-                best_wr = info["wr"]
-                best = rid
-        # Fallback: if nothing meets min_n, use the one with most games
-        if not best:
-            most_games = -1
-            for rid in rune_ids:
-                info = stats.get(str(rid))
-                if info and info["n"] > most_games:
-                    most_games = info["n"]
-                    best = rid
-                    best_wr = info["wr"]
-        return best, best_wr
-
-    # 1. Find best primary tree (by best keystone WR across ALL trees)
-    all_keystones = []
-    for tree_id, tree in TREES.items():
-        for rid in tree["rows"][0]:
-            info = pri_stats.get(str(rid))
-            if info:
-                all_keystones.append((tree_id, rid, info["wr"], info["n"]))
-
-    # Sort by WR but require min 1000 games; fallback to most games
-    reliable = [k for k in all_keystones if k[3] >= 1000]
-    if reliable:
-        reliable.sort(key=lambda x: -x[2])
-        best_tree, best_ks, best_ks_wr, _ = reliable[0]
-    elif all_keystones:
-        all_keystones.sort(key=lambda x: -x[3])  # most games
-        best_tree, best_ks, best_ks_wr, _ = all_keystones[0]
-    else:
-        best_tree = None
-        best_ks = None
-        best_ks_wr = -1
-
-    if not best_tree:
-        return None
-
-    # 2. Pick best rune per row in primary tree
-    pri_tree = TREES[best_tree]
-    pri_runes = [best_ks]
-    for row in pri_tree["rows"][1:]:
-        rune, _ = best_rune(row, pri_stats)
-        pri_runes.append(rune)
-
-    # 3. Find best secondary tree (highest combined WR of 2 runes from different rows)
-    best_sec_tree = None
-    best_sec_runes = []
-    best_sec_score = -1
-
-    for tree_id, tree in TREES.items():
-        if tree_id == best_tree:
+    pairs = {}  # pair_id -> list of (weight, pr, wr, n, baseline)
+    for result, weight in zip(build_results, enemy_weights):
+        data = result.get("data")
+        if not data or weight <= 0:
             continue
-        # Pick best rune from each row (rows 1-3, skip keystones)
-        row_bests = []
-        for row in tree["rows"][1:]:
-            rune, wr = best_rune(row, sec_stats)
-            if rune:
-                row_bests.append((rune, wr))
-        # Pick top 2 by WR
-        row_bests.sort(key=lambda x: -x[1])
-        if len(row_bests) >= 2:
-            score = row_bests[0][1] + row_bests[1][1]
-            if score > best_sec_score:
-                best_sec_score = score
-                best_sec_tree = tree_id
-                best_sec_runes = [row_bests[0][0], row_bests[1][0]]
+        baseline = data.get("avgWr", 50.0)
+        for entry in data.get("spells", []) or []:
+            if not isinstance(entry, (list, tuple)) or len(entry) < 4:
+                continue
+            pair_id, wr, pr, n = entry[0], entry[1], entry[2], entry[3]
+            if n <= 0:
+                continue
+            pairs.setdefault(pair_id, []).append((weight, pr, wr, n, baseline))
 
-    # 4. Stat shards
-    shard_stats = pri_stats  # shards use primary slot stats
-    mod = []
-    for shard_row_ids in [SHARDS["row1"], SHARDS["row2"], SHARDS["row3"]]:
-        s, _ = best_rune(shard_row_ids, shard_stats)
-        mod.append(s)
+    result = {}
+    for pair_id, rows in pairs.items():
+        total_delta = 0.0
+        total_pr = 0.0
+        total_n = 0
+        total_wr_n = 0.0
+        for w, pr, wr, n, base in rows:
+            total_delta += w * _shrunk_delta(wr, n, base)
+            total_pr += w * pr
+            total_n += n
+            total_wr_n += wr * n
+        try:
+            sid1, sid2 = (int(x) for x in str(pair_id).split("_"))
+        except ValueError:
+            continue
+        result[pair_id] = {
+            "pair": [sid1, sid2],
+            "delta": total_delta,
+            "wr": total_wr_n / total_n if total_n > 0 else 0.0,
+            "n": total_n,
+            "pr": total_pr,
+        }
+    return result
+
+
+def pick_optimal_summoner_pair(pair_stats):
+    """
+    Choose the best summoner pair: filter to pairs meeting MIN_PAIR_PR, rank by delta.
+    Returns top pick + a short list of top alternatives.
+    """
+    eligible = [p for p in pair_stats.values() if p["pr"] >= MIN_PAIR_PR]
+    if not eligible:
+        # Fallback: most-used pair wins, even if it's under the threshold
+        eligible = list(pair_stats.values())
+    if not eligible:
+        return None, []
+    eligible.sort(key=lambda p: -p["delta"])
+    best = eligible[0]
+    top_n = [
+        {
+            "pair": p["pair"],
+            "delta": round(p["delta"], 2),
+            "wr": round(p["wr"], 2),
+            "pr": round(p["pr"], 2),
+            "n": p["n"],
+        }
+        for p in eligible[:5]
+    ]
+    return best, top_n
+
+
+ITEM_SLOTS = ("item1", "item2", "item3", "item4", "item5")
+
+
+def combine_item_slots(build_results, enemy_weights):
+    """
+    Per-slot item aggregation across enemy matchups.
+    Each field (boots, item1..item5) is a list of [item_id, wr, pr, n, avg_time].
+    Returns {slot_key: {item_id: {delta, wr, n, pr, avg_time}}}.
+    """
+    slots = {k: {} for k in ("boots",) + ITEM_SLOTS}
+    agg_time = {k: {} for k in slots}  # slot -> item_id -> (total w*pr*time, total w*pr)
+
+    for result, weight in zip(build_results, enemy_weights):
+        data = result.get("data")
+        if not data or weight <= 0:
+            continue
+        baseline = data.get("avgWr", 50.0)
+        for slot_key in slots:
+            entries = data.get(slot_key) or []
+            if not isinstance(entries, list):
+                continue
+            bucket = slots[slot_key]
+            tbucket = agg_time[slot_key]
+            for entry in entries:
+                if not isinstance(entry, (list, tuple)) or len(entry) < 4:
+                    continue
+                item_id = entry[0]
+                wr = entry[1]
+                pr = entry[2]
+                n = entry[3]
+                time_min = entry[4] if len(entry) >= 5 else 0
+                if n <= 0:
+                    continue
+                cell = bucket.setdefault(item_id,
+                                         {"delta": 0.0, "pr": 0.0, "n": 0, "wr_n": 0.0})
+                cell["delta"] += weight * _shrunk_delta(wr, n, baseline)
+                cell["pr"] += weight * pr
+                cell["n"] += n
+                cell["wr_n"] += wr * n
+                if time_min:
+                    t = tbucket.setdefault(item_id, [0.0, 0.0])
+                    t[0] += weight * pr * time_min
+                    t[1] += weight * pr
+
+    out = {}
+    for slot_key, bucket in slots.items():
+        out[slot_key] = {}
+        for iid, cell in bucket.items():
+            t = agg_time[slot_key].get(iid)
+            avg_time = (t[0] / t[1]) if t and t[1] > 0 else 0.0
+            out[slot_key][iid] = {
+                "delta": cell["delta"],
+                "wr": cell["wr_n"] / cell["n"] if cell["n"] > 0 else 0.0,
+                "n": cell["n"],
+                "pr": cell["pr"],
+                "avg_time": avg_time,
+            }
+    return out
+
+
+def combine_start_sets(build_results, enemy_weights):
+    """
+    Aggregate starting item SETS (e.g. '1055_2003' = Doran's Blade + Refillable).
+    Returns {set_id: {items: [ids...], delta, wr, n, pr}}.
+    """
+    sets = {}
+    for result, weight in zip(build_results, enemy_weights):
+        data = result.get("data")
+        if not data or weight <= 0:
+            continue
+        baseline = data.get("avgWr", 50.0)
+        for entry in data.get("startSet") or []:
+            if not isinstance(entry, (list, tuple)) or len(entry) < 4:
+                continue
+            set_id, wr, pr, n = entry[0], entry[1], entry[2], entry[3]
+            if n <= 0:
+                continue
+            try:
+                items = [int(x) for x in str(set_id).split("_")]
+            except ValueError:
+                continue
+            cell = sets.setdefault(set_id,
+                                   {"items": items, "delta": 0.0, "pr": 0.0,
+                                    "n": 0, "wr_n": 0.0})
+            cell["delta"] += weight * _shrunk_delta(wr, n, baseline)
+            cell["pr"] += weight * pr
+            cell["n"] += n
+            cell["wr_n"] += wr * n
+
+    out = {sid: {
+        "items": cell["items"],
+        "delta": cell["delta"],
+        "wr": cell["wr_n"] / cell["n"] if cell["n"] > 0 else 0.0,
+        "n": cell["n"],
+        "pr": cell["pr"],
+    } for sid, cell in sets.items()}
+    return out
+
+
+MIN_ITEM_PR = 3.0  # min aggregate pick rate for an item to be considered
+
+
+def _rank_by_delta(stats_dict, min_pr):
+    """Return list of (id, stats) sorted by delta desc, filtered by min_pr (with fallback)."""
+    eligible = [(k, v) for k, v in stats_dict.items() if v["pr"] >= min_pr]
+    if not eligible:
+        eligible = list(stats_dict.items())
+    eligible.sort(key=lambda x: -x[1]["delta"])
+    return eligible
+
+
+def _format_item(iid, cell):
+    out = {
+        "id": iid,
+        "wr": round(cell["wr"], 2),
+        "pr": round(cell["pr"], 2),
+        "n": cell["n"],
+        "delta": round(cell["delta"], 2),
+    }
+    if "avg_time" in cell and cell["avg_time"]:
+        out["avg_time"] = round(cell["avg_time"], 1)
+    return out
+
+
+def pick_optimal_build(slot_stats, start_sets, alts_per_slot=3):
+    """
+    Build a structured recommendation:
+      - start: best start set (2-3 items) by delta
+      - boots: best boots
+      - core: items 1..5, each with primary (globally deduped) + up to N alts
+    """
+    # Start set: rank by delta with MIN_ITEM_PR floor
+    start = None
+    start_alts = []
+    ranked_ss = _rank_by_delta(start_sets, MIN_ITEM_PR)
+    if ranked_ss:
+        def _format_set(sid, cell):
+            return {
+                "id": sid,
+                "items": cell["items"],
+                "wr": round(cell["wr"], 2),
+                "pr": round(cell["pr"], 2),
+                "n": cell["n"],
+                "delta": round(cell["delta"], 2),
+            }
+        start = _format_set(*ranked_ss[0])
+        start_alts = [_format_set(sid, cell) for sid, cell in ranked_ss[1:3]]
+
+    # Boots: rank, take best
+    boots = None
+    boots_alts = []
+    ranked_boots = _rank_by_delta(slot_stats.get("boots", {}), MIN_ITEM_PR)
+    if ranked_boots:
+        boots = _format_item(*ranked_boots[0])
+        boots_alts = [_format_item(i, c) for i, c in ranked_boots[1:1 + alts_per_slot]]
+
+    # Core items 1..5 with global dedup on the primary pick
+    chosen = set()
+    if boots is not None:
+        chosen.add(boots["id"])
+    core = []
+    for slot_key in ITEM_SLOTS:
+        ranked = _rank_by_delta(slot_stats.get(slot_key, {}), MIN_ITEM_PR)
+        # Primary: highest-delta item not already picked
+        primary = None
+        for iid, cell in ranked:
+            if iid in chosen:
+                continue
+            primary = _format_item(iid, cell)
+            chosen.add(iid)
+            break
+        # Alternatives: top-N by delta in this slot, NOT deduped
+        alts = [_format_item(iid, cell) for iid, cell in ranked[:alts_per_slot + 1]
+                if primary is None or iid != primary["id"]][:alts_per_slot]
+        core.append({"slot": slot_key, "primary": primary, "alternatives": alts})
 
     return {
-        "primary_tree": best_tree,
-        "primary_tree_name": TREES[best_tree]["name"],
-        "primary_runes": pri_runes,
-        "secondary_tree": best_sec_tree,
-        "secondary_tree_name": TREES[best_sec_tree]["name"] if best_sec_tree else None,
-        "secondary_runes": best_sec_runes,
-        "shards": mod,
-        "keystone_wr": best_ks_wr,
+        "start": start,
+        "start_alternatives": start_alts,
+        "boots": boots,
+        "boots_alternatives": boots_alts,
+        "core": core,
+    }
+
+
+RUNE_TREES = {
+    1: {"name": "Precision", "rows": [
+        [8005, 8008, 8021, 8010],
+        [9101, 9111, 8009],
+        [9104, 9105, 9103],
+        [8014, 8017, 8299],
+    ]},
+    2: {"name": "Sorcery", "rows": [
+        [8214, 8229, 8230],
+        [8224, 8226, 8275],
+        [8210, 8234, 8233],
+        [8237, 8232, 8236],
+    ]},
+    3: {"name": "Resolve", "rows": [
+        [8437, 8439, 8465],
+        [8446, 8463, 8401],
+        [8429, 8444, 8473],
+        [8451, 8453, 8242],
+    ]},
+    4: {"name": "Inspiration", "rows": [
+        [8351, 8360, 8369],
+        [8306, 8304, 8313],
+        [8321, 8316, 8345],
+        [8347, 8352, 8410],
+    ]},
+    5: {"name": "Domination", "rows": [
+        [8112, 8128, 9923],
+        [8126, 8139, 8143],
+        [8137, 8140, 8141],
+        [8135, 8105, 8106],
+    ]},
+}
+
+RUNE_SHARDS = {
+    "row1": [5008, 5005, 5007],
+    # Row 2 (flex slot) shards are tracked separately from row 1 with an
+    # 'f' suffix on the key (e.g. 5008f vs 5008). We look up stats by the
+    # suffixed key but display/icon use the bare integer ID.
+    "row2": ["5008f", "5010f", "5001f"],
+    "row3": [5011, 5013, 5001],
+}
+
+
+def _shard_display_id(rid):
+    """Strip the 'f' flex-slot suffix on shard keys (e.g. '5010f' -> 5010)."""
+    if isinstance(rid, str) and rid.endswith("f") and rid[:-1].isdigit():
+        return int(rid[:-1])
+    return rid
+
+
+def _rune_summary(rid, stats):
+    """Return {id, delta, intrinsic_delta, matchup_shift, wr, pr, n, eligible} for a rune id."""
+    info = stats.get(str(rid)) if rid is not None else None
+    display = _shard_display_id(rid)
+    if info is None:
+        return {"id": display, "delta": 0.0, "intrinsic_delta": 0.0,
+                "matchup_shift": 0.0, "wr": 0.0, "pr": 0.0, "n": 0,
+                "eligible": False}
+    return {
+        "id": display,
+        "delta": round(info["delta"], 2),
+        "intrinsic_delta": round(info.get("intrinsic_delta", 0.0), 2),
+        "matchup_shift": round(info.get("matchup_shift", 0.0), 2),
+        "wr": round(info["wr"], 2),
+        "pr": round(info["pr"], 2),
+        "n": info["n"],
+        "eligible": info.get("eligible", True),
+    }
+
+
+def _rune_alternatives(rune_ids, chosen_id, stats, top_n):
+    """Top N alternatives from a set of rune IDs, excluding chosen_id.
+    Eligible (passes PR threshold) alts come first, then ineligible ones, each
+    group sorted by delta. This way the frontend can show meta alternatives
+    before niche curiosities, and dim/flag the latter as 'filtered'.
+    """
+    alts = [_rune_summary(rid, stats) for rid in rune_ids if rid != chosen_id]
+    alts.sort(key=lambda x: (not x["eligible"], -x["delta"]))
+    return alts[:top_n]
+
+
+def build_optimal_rune_page(rune_info):
+    """
+    Holistic rune-page search: evaluate (primary_tree × keystone × secondary_tree)
+    jointly so a slightly-worse keystone in a tree with much-better minors can win.
+
+    Each component's contribution is scaled by an attribution factor that reflects
+    "how much of this signal's data actually came from users of THIS keystone":
+    - Primary minor of tree T: scale by tree_share(Y, T) = pr(Y) / Σ pr(K in T).
+      Otherwise a niche keystone in a popular tree would free-ride on the modal
+      keystone's minor stats (e.g. FleetFW Sylas inheriting Conq Sylas's PoM δ).
+    - Secondary minor of tree S: scale by pr(Y)/100 — Y's overall share among
+      all keystone choices (uniform-secondary-choice approximation).
+    - Shards: scale by pr(Y)/100 too — same reasoning as secondary minors.
+    """
+    pri = rune_info.get("pri", {})
+    sec = rune_info.get("sec", {})
+
+    def best_in_row(rune_ids, stats):
+        best_rid, best_delta, best_n = None, -1e9, 0
+        for rid in rune_ids:
+            info = stats.get(str(rid))
+            if info is None or not info.get("eligible", True):
+                continue
+            if info["delta"] > best_delta:
+                best_delta = info["delta"]
+                best_rid = rid
+                best_n = info["n"]
+        if best_rid is None:
+            return None, 0.0, 0
+        return best_rid, best_delta, best_n
+
+    # Per-tree total keystone PR (denominator for tree_share)
+    tree_total_pr = {}
+    for tid, tree in RUNE_TREES.items():
+        total = 0.0
+        for ks in tree["rows"][0]:
+            info = pri.get(str(ks))
+            if info:
+                total += info.get("pr", 0)
+        tree_total_pr[tid] = total
+
+    # Per-tree primary minor picks (best in each row, independent of keystone)
+    tree_minor = {}
+    for tree_id, tree in RUNE_TREES.items():
+        runes = []
+        total = 0.0
+        for row in tree["rows"][1:]:
+            rid, d, _ = best_in_row(row, pri)
+            runes.append(rid)
+            total += d if rid is not None else 0.0
+        tree_minor[tree_id] = {"runes": runes, "delta": total}
+
+    # Per-tree best 2 secondary runes (from different rows)
+    tree_secondary = {}
+    for tree_id, tree in RUNE_TREES.items():
+        row_bests = []
+        for idx, row in enumerate(tree["rows"][1:], start=1):
+            rid, d, _ = best_in_row(row, sec)
+            if rid is not None:
+                row_bests.append((idx, rid, d))
+        row_bests.sort(key=lambda x: -x[2])
+        if len(row_bests) >= 2:
+            tree_secondary[tree_id] = {
+                "runes": [row_bests[0][1], row_bests[1][1]],
+                "rows":  [row_bests[0][0], row_bests[1][0]],
+                "delta": row_bests[0][2] + row_bests[1][2],
+            }
+
+    # Shards: best in each row, summed (scaled per-keystone via attribution below)
+    shard_total = 0.0
+    for row_ids in (RUNE_SHARDS["row1"], RUNE_SHARDS["row2"], RUNE_SHARDS["row3"]):
+        _rid, d, _ = best_in_row(row_ids, pri)
+        shard_total += d
+
+    # Enumerate (primary_tree, keystone, secondary_tree).
+    best = None
+    fallback = None
+    for p_tree_id, p_tree in RUNE_TREES.items():
+        minor = tree_minor[p_tree_id]
+        tree_total = tree_total_pr.get(p_tree_id, 0)
+        for ks in p_tree["rows"][0]:
+            ks_info = pri.get(str(ks))
+            if ks_info is None or not ks_info.get("eligible", True):
+                continue
+            ks_delta = ks_info["delta"]
+            ks_n = ks_info["n"]
+            ks_pr = ks_info.get("pr", 0.0)
+            # Attribution factors
+            ts_primary = (ks_pr / tree_total) if tree_total > 0 else 0.0
+            attr_other = ks_pr / 100.0
+            for s_tree_id in RUNE_TREES:
+                if s_tree_id == p_tree_id:
+                    continue
+                sec_info = tree_secondary.get(s_tree_id)
+                if sec_info is None:
+                    continue
+                page_score = (
+                    ks_delta
+                    + minor["delta"] * ts_primary
+                    + sec_info["delta"] * attr_other
+                    + shard_total * attr_other
+                )
+                candidate = (
+                    page_score, ks_n, p_tree_id, ks, ks_delta,
+                    minor["runes"], s_tree_id, sec_info["runes"], sec_info["rows"],
+                )
+                if best is None or candidate[0] > best[0]:
+                    best = candidate
+                if fallback is None or candidate[1] > fallback[1]:
+                    fallback = candidate
+
+    chosen = best or fallback
+    if chosen is None:
+        return None
+
+    (page_score, _ks_n, p_tree_id, ks, _ks_delta, minor_runes,
+     s_tree_id, sec_runes, sec_rows) = chosen
+
+    # --- Enrich primary (keystone + 3 minors) with alternatives ---
+    all_keystones = [rid for t in RUNE_TREES.values() for rid in t["rows"][0]]
+    primary_runes_out = [
+        {**_rune_summary(ks, pri),
+         "alternatives": _rune_alternatives(all_keystones, ks, pri, top_n=4)}
+    ]
+    for row_idx, row_ids in enumerate(RUNE_TREES[p_tree_id]["rows"][1:], start=1):
+        chosen_rid = minor_runes[row_idx - 1]
+        primary_runes_out.append({
+            **_rune_summary(chosen_rid, pri),
+            "alternatives": _rune_alternatives(row_ids, chosen_rid, pri, top_n=2),
+        })
+
+    # --- Enrich secondary (2 runes, from two distinct rows) with alternatives ---
+    secondary_runes_out = []
+    for pick_rid, pick_row in zip(sec_runes, sec_rows):
+        row_ids = RUNE_TREES[s_tree_id]["rows"][pick_row]
+        secondary_runes_out.append({
+            **_rune_summary(pick_rid, sec),
+            "alternatives": _rune_alternatives(row_ids, pick_rid, sec, top_n=2),
+        })
+
+    # --- Shards: best per row by delta, with 2 alternatives per row ---
+    shards_out = []
+    for row_ids in (RUNE_SHARDS["row1"], RUNE_SHARDS["row2"], RUNE_SHARDS["row3"]):
+        rid, _, _ = best_in_row(row_ids, pri)
+        shards_out.append({
+            **_rune_summary(rid, pri),
+            "alternatives": _rune_alternatives(row_ids, rid, pri, top_n=2),
+        })
+
+    return {
+        "primary_tree": p_tree_id,
+        "primary_tree_name": RUNE_TREES[p_tree_id]["name"],
+        "primary_runes": primary_runes_out,
+        "secondary_tree": s_tree_id,
+        "secondary_tree_name": RUNE_TREES[s_tree_id]["name"],
+        "secondary_runes": secondary_runes_out,
+        "shards": shards_out,
+        "page_delta": round(page_score, 2),
     }
 
 
@@ -882,27 +1421,55 @@ def build_calc():
     if not my_champ or not enemies:
         return jsonify({"error": "Need champion and at least one enemy"}), 400
 
-    # Fetch builds vs all enemies in parallel (no delay needed for 5 requests)
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futures = [
+    # Fetch unconditioned + per-enemy builds in parallel
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        uncond_future = pool.submit(fetch_unconditioned_build, my_champ, my_lane, tier, patch)
+        matchup_futures = [
             pool.submit(fetch_vs_build, my_champ, my_lane, enemy_name, enemy_lane, tier, patch)
             for enemy_name, enemy_lane in enemies
         ]
-        build_results = [f.result() for f in futures]
+        unconditioned = uncond_future.result()
+        build_results = [f.result() for f in matchup_futures]
 
-    # Combine per-rune stats and find optimal page
-    rune_wrs = combine_rune_stats(build_results)
-    optimal = build_optimal_rune_page(rune_wrs)
+    # Renormalized enemy weights (from DEFAULT_WEIGHTS for picking lane)
+    enemy_weights = build_enemy_weights(my_lane, enemies)
 
-    # Also extract items and spells from each matchup's summary
+    # Rune page — split scoring into intrinsic + matchup_shift
+    rune_info = combine_rune_stats(build_results, enemy_weights, unconditioned.get("data"),
+                                   champion_name=my_champ, picking_lane=my_lane)
+    optimal = build_optimal_rune_page(rune_info)
+
+    # Summoner spell pair
+    pair_stats = combine_summoner_pairs(build_results, enemy_weights)
+    best_pair, top_pairs = pick_optimal_summoner_pair(pair_stats)
+    optimal_summoners = None
+    if best_pair:
+        optimal_summoners = {
+            "pair": best_pair["pair"],
+            "delta": round(best_pair["delta"], 2),
+            "wr": round(best_pair["wr"], 2),
+            "pr": round(best_pair["pr"], 2),
+            "n": best_pair["n"],
+            "alternatives": top_pairs[1:],
+        }
+
+    # Item build
+    slot_stats = combine_item_slots(build_results, enemy_weights)
+    start_sets = combine_start_sets(build_results, enemy_weights)
+    optimal_items = pick_optimal_build(slot_stats, start_sets)
+
+    # Extract per-enemy summary (display-only)
     per_enemy = []
-    for result in build_results:
+    for result, weight in zip(build_results, enemy_weights):
         data = result.get("data")
+        entry = {
+            "enemy": result["enemy"],
+            "enemy_lane": result["enemy_lane"],
+            "weight": round(weight, 3),
+        }
         if data and data.get("summary"):
             win = data["summary"].get("win", {})
-            per_enemy.append({
-                "enemy": result["enemy"],
-                "enemy_lane": result["enemy_lane"],
+            entry.update({
                 "n": data.get("n", 0),
                 "runes": win.get("runes", {}),
                 "items": win.get("items", {}),
@@ -910,15 +1477,17 @@ def build_calc():
                 "skill": win.get("skillpriority", {}),
             })
         else:
-            per_enemy.append({"enemy": result["enemy"], "enemy_lane": result["enemy_lane"], "n": 0})
+            entry["n"] = 0
+        per_enemy.append(entry)
 
     return jsonify({
         "champion": my_champ,
         "lane": my_lane,
         "optimal_runes": optimal,
+        "optimal_summoners": optimal_summoners,
+        "optimal_items": optimal_items,
         "per_enemy_builds": per_enemy,
-        "rune_wrs": {slot: {k: v for k, v in stats.items() if v.get("n", 0) >= 100}
-                     for slot, stats in rune_wrs.items()},
+        "enemy_weights": [round(w, 3) for w in enemy_weights],
     })
 
 

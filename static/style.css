@@ -582,14 +582,18 @@ tbody tr:nth-child(3) .rank-col { color: #a37147; }
 }
 
 .build-grid {
-    display: flex;
-    gap: 24px;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 20px;
+    align-items: start;
 }
 
 .build-section {
-    flex: 1;
-    min-width: 200px;
+    min-width: 0;  /* allow children to shrink within grid cell */
+}
+
+.build-section.full-row {
+    grid-column: 1 / -1;
 }
 
 .build-section h3 {
@@ -620,14 +624,21 @@ tbody tr:nth-child(3) .rank-col { color: #a37147; }
     flex-shrink: 0;
 }
 
+.rune-slot,
+.item-slot {
+    position: relative;
+    display: inline-flex;
+}
+
 .rune-icon {
     width: 32px;
     height: 32px;
     border-radius: 50%;
     border: 2px solid #30363d;
+    cursor: help;
 }
 
-.rune-icon.pri-rune:first-of-type {
+.rune-icon.keystone {
     width: 40px;
     height: 40px;
     border-color: #c89b3c;
@@ -641,6 +652,119 @@ tbody tr:nth-child(3) .rank-col { color: #a37147; }
     width: 24px;
     height: 24px;
     border-color: #30363d;
+}
+
+.rune-tooltip {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    background: #0d1117;
+    border: 1px solid #484f58;
+    border-radius: 6px;
+    padding: 8px 10px;
+    min-width: 170px;
+    display: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+
+.rune-slot:hover .rune-tooltip,
+.item-slot:hover .rune-tooltip {
+    display: block;
+}
+
+.tip-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #21262d;
+    margin-bottom: 6px;
+}
+
+.tip-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid #c89b3c;
+    flex-shrink: 0;
+}
+
+.tip-icon-sm {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid #30363d;
+    flex-shrink: 0;
+}
+
+.tip-icon-item {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid #c89b3c;
+    flex-shrink: 0;
+}
+
+.tip-set-icons {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+/* Item-slot tooltips use square icons; rune-slot tooltips keep round ones */
+.item-slot .tip-icon-sm {
+    border-radius: 4px;
+}
+
+.tip-meta {
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+}
+
+.tip-score {
+    color: #7ee787;
+    font-weight: 600;
+}
+
+.tip-score.neg {
+    color: #ff7b72;
+}
+
+.tip-pr {
+    color: #8b949e;
+    font-size: 11px;
+}
+
+.tip-alts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tip-alt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+}
+
+.tip-alt.filtered {
+    opacity: 0.45;
+}
+
+.tip-alt .tip-score {
+    margin-left: auto;
+    font-weight: 500;
+}
+
+.tip-alt .tip-pr {
+    color: #6a737d;
+    width: 44px;
+    text-align: right;
 }
 
 .rune-icon-sm {
@@ -675,6 +799,181 @@ tbody tr:nth-child(3) .rank-col { color: #a37147; }
 .per-enemy-games {
     color: #484f58;
     font-size: 11px;
+}
+
+.summoner-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.summoner-pair {
+    display: flex;
+    gap: 6px;
+}
+
+.summoner-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: 2px solid #c89b3c;
+}
+
+.summoner-icon-sm {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid #30363d;
+}
+
+.summoner-icon.fallback,
+.summoner-icon-sm.fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #21262d;
+    color: #8b949e;
+    font-size: 10px;
+}
+
+.summoner-stats {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    align-items: center;
+}
+
+.summoner-wr {
+    color: #7ee787;
+    font-weight: 600;
+}
+
+.summoner-pr {
+    color: #8b949e;
+}
+
+.summoner-games {
+    color: #484f58;
+    font-size: 11px;
+}
+
+.summoner-alts {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 4px;
+    border-top: 1px solid #21262d;
+    padding-top: 6px;
+}
+
+.summoner-alt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #8b949e;
+}
+
+.alt-wr {
+    color: #7ee787;
+    margin-left: auto;
+}
+
+.alt-pr {
+    color: #6a737d;
+    width: 40px;
+    text-align: right;
+}
+
+.items-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.item-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.item-label {
+    font-size: 11px;
+    color: #6a737d;
+    width: 48px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+
+.item-icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.item-icons.item-sequence {
+    gap: 2px;
+}
+
+.item-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    border: 1px solid #30363d;
+}
+
+.item-icon.item-primary {
+    width: 34px;
+    height: 34px;
+    border-color: #c89b3c;
+}
+
+.item-icon.item-alt {
+    width: 24px;
+    height: 24px;
+    opacity: 0.7;
+}
+
+.item-arrow {
+    color: #484f58;
+    margin: 0 2px;
+    font-size: 14px;
+}
+
+.item-stat {
+    color: #7ee787;
+    font-weight: 600;
+    font-size: 12px;
+    margin-left: auto;
+}
+
+.item-stat-sub {
+    color: #8b949e;
+    font-size: 11px;
+    width: 60px;
+    text-align: right;
+}
+
+.item-alts {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 6px;
+    border-top: 1px solid #21262d;
+    padding-top: 6px;
+}
+
+.item-alt-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+}
+
+.item-alt-label {
+    color: #6a737d;
+    width: 56px;
+    flex-shrink: 0;
 }
 
 .loading {

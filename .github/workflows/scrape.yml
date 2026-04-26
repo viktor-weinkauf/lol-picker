@@ -2,17 +2,25 @@ name: Scrape lolalytics data
 
 on:
   schedule:
-    # Mondays and Thursdays at 06:00 UTC
-    - cron: "0 6 * * 1,4"
+    # Mondays at 02:00 UTC = 04:00 CEST (03:00 CET in winter — GitHub cron has no DST)
+    - cron: "0 2 * * 1"
   workflow_dispatch:
     inputs:
-      tier:
-        description: "Tier to scrape"
-        default: "emerald_plus"
+      tiers:
+        description: "Comma-separated tiers (e.g. all,gold_plus,master_plus,emerald_plus)"
+        default: "all,gold_plus,master_plus,emerald_plus"
         required: false
       patch:
         description: "Patch window (days)"
         default: "30"
+        required: false
+      workers:
+        description: "Concurrent workers per tier"
+        default: "4"
+        required: false
+      delay:
+        description: "Per-worker delay between requests (seconds)"
+        default: "0.5"
         required: false
 
 permissions:
@@ -35,8 +43,10 @@ jobs:
       - name: Run scraper
         run: |
           python scrape_data.py \
-            --tier "${{ github.event.inputs.tier || 'emerald_plus' }}" \
-            --patch "${{ github.event.inputs.patch || '30' }}"
+            --tiers "${{ github.event.inputs.tiers || 'all,gold_plus,master_plus,emerald_plus' }}" \
+            --patch "${{ github.event.inputs.patch || '30' }}" \
+            --workers "${{ github.event.inputs.workers || '4' }}" \
+            --delay "${{ github.event.inputs.delay || '0.5' }}"
 
       - name: Commit updated data
         run: |

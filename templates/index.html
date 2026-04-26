@@ -561,6 +561,130 @@
             return `https://cdn5.lolalytics.com/rune68/${runeId}.webp`;
         }
 
+        function fmtDelta(d) {
+            if (d === null || d === undefined) return "—";
+            const s = d.toFixed(2);
+            return d > 0 ? `+${s}` : s;
+        }
+
+        function deltaSpan(d) {
+            const cls = (typeof d === "number" && d < 0) ? "tip-score neg" : "tip-score";
+            return `<span class="${cls}">${fmtDelta(d)}</span>`;
+        }
+
+        function renderRuneSlot(rune, iconCls) {
+            const iconUrl = runeIconUrl(rune.id);
+            let tip = `<div class="tip-head">`;
+            tip += `<img src="${iconUrl}" class="tip-icon">`;
+            tip += `<div class="tip-meta">${deltaSpan(rune.delta)}`;
+            tip += `<span class="tip-pr">${rune.pr.toFixed(1)}% pick</span></div>`;
+            tip += `</div>`;
+            const alts = rune.alternatives || [];
+            if (alts.length) {
+                tip += `<div class="tip-alts">`;
+                for (const a of alts) {
+                    const cls = a.eligible === false ? "tip-alt filtered" : "tip-alt";
+                    tip += `<div class="${cls}">`;
+                    tip += `<img src="${runeIconUrl(a.id)}" class="tip-icon-sm">`;
+                    tip += deltaSpan(a.delta);
+                    tip += `<span class="tip-pr">${a.pr.toFixed(1)}%</span>`;
+                    tip += `</div>`;
+                }
+                tip += `</div>`;
+            }
+            return `<span class="rune-slot">`
+                 + `<img src="${iconUrl}" class="rune-icon ${iconCls}">`
+                 + `<div class="rune-tooltip">${tip}</div>`
+                 + `</span>`;
+        }
+
+        const SUMMONER_SPELLS = {
+            1: "SummonerBoost",    // Cleanse
+            3: "SummonerExhaust",
+            4: "SummonerFlash",
+            6: "SummonerHaste",    // Ghost
+            7: "SummonerHeal",
+            11: "SummonerSmite",
+            12: "SummonerTeleport",
+            13: "SummonerMana",    // Clarity
+            14: "SummonerDot",     // Ignite
+            21: "SummonerBarrier",
+            32: "SummonerSnowball",// Mark
+        };
+
+        function summonerIconUrl(spellId) {
+            const slug = SUMMONER_SPELLS[spellId];
+            if (!slug) return "";
+            return `https://ddragon.leagueoflegends.com/cdn/${DDRAGON}/img/spell/${slug}.png`;
+        }
+
+        function summonerLabel(spellId) {
+            const slug = SUMMONER_SPELLS[spellId] || `Spell ${spellId}`;
+            return slug.replace("Summoner", "");
+        }
+
+        function itemIconUrl(itemId) {
+            return `https://ddragon.leagueoflegends.com/cdn/${DDRAGON}/img/item/${itemId}.png`;
+        }
+
+        function itemTipHead(item, iconHtml) {
+            let tip = `<div class="tip-head">`;
+            tip += iconHtml;
+            tip += `<div class="tip-meta">`;
+            if (item.delta !== undefined) tip += deltaSpan(item.delta);
+            if (item.wr !== undefined) tip += `<span class="tip-pr">${item.wr.toFixed(1)}% wr</span>`;
+            if (item.pr !== undefined) tip += `<span class="tip-pr">${item.pr.toFixed(1)}% pick</span>`;
+            tip += `</div></div>`;
+            return tip;
+        }
+
+        function itemTipAlts(alts, multiIcon) {
+            if (!alts || !alts.length) return "";
+            let tip = `<div class="tip-alts">`;
+            for (const a of alts) {
+                tip += `<div class="tip-alt">`;
+                if (multiIcon && Array.isArray(a.items)) {
+                    for (const iid of a.items) tip += `<img src="${itemIconUrl(iid)}" class="tip-icon-sm">`;
+                } else {
+                    tip += `<img src="${itemIconUrl(a.id)}" class="tip-icon-sm">`;
+                }
+                tip += deltaSpan(a.delta);
+                tip += `<span class="tip-pr">${a.pr.toFixed(1)}%</span>`;
+                tip += `</div>`;
+            }
+            tip += `</div>`;
+            return tip;
+        }
+
+        function renderItemSlot(item, cls, alternatives) {
+            if (!item) return "";
+            const iconUrl = itemIconUrl(item.id);
+            const headIcon = `<img src="${iconUrl}" class="tip-icon-item">`;
+            const tip = itemTipHead(item, headIcon) + itemTipAlts(alternatives);
+            return `<span class="item-slot">`
+                 + `<img src="${iconUrl}" class="item-icon ${cls || ""}">`
+                 + `<div class="rune-tooltip">${tip}</div>`
+                 + `</span>`;
+        }
+
+        function renderStartSet(start, alternatives) {
+            if (!start || !Array.isArray(start.items)) return "";
+            let icons = "";
+            for (const iid of start.items) {
+                icons += `<img src="${itemIconUrl(iid)}" class="item-icon">`;
+            }
+            let headIcons = '<div class="tip-set-icons">';
+            for (const iid of start.items) {
+                headIcons += `<img src="${itemIconUrl(iid)}" class="tip-icon-sm">`;
+            }
+            headIcons += '</div>';
+            const tip = itemTipHead(start, headIcons) + itemTipAlts(alternatives, true);
+            return `<span class="item-slot item-slot-set">`
+                 + icons
+                 + `<div class="rune-tooltip">${tip}</div>`
+                 + `</span>`;
+        }
+
         function renderBuild(data, container) {
             const opt = data.optimal_runes;
             if (!opt) {
@@ -570,33 +694,145 @@
 
             let html = '<div class="build-grid">';
 
-            // Runes section
+            // Runes section (each rune has { id, delta, wr, pr, n, alternatives: [...] })
             html += '<div class="build-section"><h3>Runes</h3><div class="rune-page">';
             html += `<div class="rune-tree"><span class="tree-label">${opt.primary_tree_name}</span>`;
-            for (const rid of opt.primary_runes) {
-                if (rid) html += `<img src="${runeIconUrl(rid)}" class="rune-icon pri-rune" title="${rid}">`;
-            }
+            (opt.primary_runes || []).forEach((r, i) => {
+                if (!r || !r.id) return;
+                const cls = i === 0 ? "pri-rune keystone" : "pri-rune";
+                html += renderRuneSlot(r, cls);
+            });
             html += '</div>';
             html += `<div class="rune-tree"><span class="tree-label">${opt.secondary_tree_name || "?"}</span>`;
-            for (const rid of opt.secondary_runes) {
-                if (rid) html += `<img src="${runeIconUrl(rid)}" class="rune-icon sec-rune" title="${rid}">`;
+            for (const r of (opt.secondary_runes || [])) {
+                if (r && r.id) html += renderRuneSlot(r, "sec-rune");
             }
             html += '</div>';
             html += '<div class="rune-tree"><span class="tree-label">Shards</span>';
-            for (const rid of (opt.shards || [])) {
-                if (rid) html += `<img src="${runeIconUrl(rid)}" class="rune-icon shard" title="${rid}">`;
+            for (const r of (opt.shards || [])) {
+                if (r && r.id) html += renderRuneSlot(r, "shard");
             }
             html += '</div></div></div>';
 
+            // Summoners section
+            const sums = data.optimal_summoners;
+            if (sums && Array.isArray(sums.pair)) {
+                html += '<div class="build-section"><h3>Summoners</h3><div class="summoner-block">';
+                html += '<div class="summoner-pair">';
+                for (const sid of sums.pair) {
+                    const url = summonerIconUrl(sid);
+                    const name = summonerLabel(sid);
+                    if (url) {
+                        html += `<img src="${url}" class="summoner-icon" title="${name}">`;
+                    } else {
+                        html += `<span class="summoner-icon fallback" title="Spell ${sid}">${sid}</span>`;
+                    }
+                }
+                html += '</div>';
+                html += `<div class="summoner-stats">`;
+                html += `<span class="summoner-wr">${sums.wr.toFixed(1)}%</span>`;
+                html += `<span class="summoner-pr">${sums.pr.toFixed(1)}% pick</span>`;
+                html += `<span class="summoner-games">${fmtGames(sums.n)}</span>`;
+                html += `</div>`;
+                if (sums.alternatives && sums.alternatives.length) {
+                    html += '<div class="summoner-alts">';
+                    for (const alt of sums.alternatives) {
+                        html += '<div class="summoner-alt">';
+                        for (const sid of alt.pair) {
+                            const url = summonerIconUrl(sid);
+                            const name = summonerLabel(sid);
+                            if (url) html += `<img src="${url}" class="summoner-icon-sm" title="${name}">`;
+                            else html += `<span class="summoner-icon-sm fallback">${sid}</span>`;
+                        }
+                        html += `<span class="alt-wr">${alt.wr.toFixed(1)}%</span>`;
+                        html += `<span class="alt-pr">${alt.pr.toFixed(1)}%</span>`;
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                }
+                html += '</div></div>';
+            }
+
+            // Items section
+            const it = data.optimal_items;
+            if (it) {
+                html += '<div class="build-section"><h3>Items</h3><div class="items-block">';
+
+                // Start set (hover shows stats + other starting sets)
+                if (it.start && Array.isArray(it.start.items)) {
+                    html += '<div class="item-row">';
+                    html += '<span class="item-label">Start</span>';
+                    html += '<div class="item-icons">';
+                    html += renderStartSet(it.start, it.start_alternatives || []);
+                    html += '</div>';
+                    html += `<span class="item-stat">${it.start.wr.toFixed(1)}%</span>`;
+                    html += `<span class="item-stat-sub">${it.start.pr.toFixed(1)}% pick</span>`;
+                    html += '</div>';
+                }
+
+                // Boots (hover on primary shows boots_alternatives)
+                if (it.boots) {
+                    html += '<div class="item-row">';
+                    html += '<span class="item-label">Boots</span>';
+                    html += '<div class="item-icons">';
+                    html += renderItemSlot(it.boots, "item-primary", it.boots_alternatives || []);
+                    for (const alt of (it.boots_alternatives || []).slice(0, 2)) {
+                        html += renderItemSlot(alt, "item-alt");  // no sub-alts
+                    }
+                    html += '</div>';
+                    html += `<span class="item-stat">${it.boots.wr.toFixed(1)}%</span>`;
+                    html += `<span class="item-stat-sub">${it.boots.pr.toFixed(1)}% pick</span>`;
+                    html += '</div>';
+                }
+
+                // Core build order (items 1..5, deduped primaries)
+                const core = it.core || [];
+                if (core.length) {
+                    html += '<div class="item-row">';
+                    html += '<span class="item-label">Core</span>';
+                    html += '<div class="item-icons item-sequence">';
+                    core.forEach((slot, idx) => {
+                        if (slot.primary) {
+                            html += renderItemSlot(slot.primary, "item-primary", slot.alternatives || []);
+                            if (idx < core.length - 1) html += '<span class="item-arrow">›</span>';
+                        }
+                    });
+                    html += '</div>';
+                    html += '</div>';
+
+                    // Alternatives per slot (each alt gets its own simple tooltip)
+                    html += '<div class="item-alts">';
+                    core.forEach((slot, idx) => {
+                        const alts = slot.alternatives || [];
+                        if (!alts.length) return;
+                        html += '<div class="item-alt-row">';
+                        html += `<span class="item-alt-label">#${idx + 1} alts</span>`;
+                        html += '<div class="item-icons">';
+                        for (const a of alts) html += renderItemSlot(a, "item-alt");
+                        html += '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                html += '</div></div>';
+            }
+
             // Per-enemy breakdown
-            html += '<div class="build-section"><h3>Per Enemy</h3><div class="per-enemy-list">';
+            html += '<div class="build-section full-row"><h3>Per Enemy</h3><div class="per-enemy-list">';
             for (const e of data.per_enemy_builds || []) {
                 const runes = e.runes?.set?.pri || [];
                 const ks = runes[0];
                 const wr = e.runes?.wr;
+                const spells = e.spells || {};
+                const spellIds = Array.isArray(spells.ids) ? spells.ids : [];
                 html += `<div class="per-enemy-row">`;
                 html += `<span class="per-enemy-name">vs ${e.enemy} (${e.enemy_lane})</span>`;
                 if (ks) html += `<img src="${runeIconUrl(ks)}" class="rune-icon-sm" title="Keystone ${ks}">`;
+                for (const sid of spellIds) {
+                    const url = summonerIconUrl(sid);
+                    if (url) html += `<img src="${url}" class="summoner-icon-sm" title="${summonerLabel(sid)}">`;
+                }
                 if (wr) html += `<span class="per-enemy-wr">${wr.toFixed(1)}%</span>`;
                 html += `<span class="per-enemy-games">${fmtGames(e.n)}</span>`;
                 html += '</div>';
