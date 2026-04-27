@@ -1,11 +1,4 @@
 {
-  "Ahri": {
-    "top": 1.3,
-    "jungle": 0,
-    "middle": 97.7,
-    "bottom": 0.3,
-    "support": 0.7
-  },
   "Akshan": {
     "top": 6.3,
     "jungle": 0.3,
@@ -14,9 +7,9 @@
     "support": 0.9
   },
   "Aatrox": {
-    "top": 80.7,
+    "top": 80.6,
     "jungle": 17,
-    "middle": 1.7,
+    "middle": 1.6,
     "bottom": 0.1,
     "support": 0.6
   },
@@ -26,6 +19,13 @@
     "middle": 70.8,
     "bottom": 0.1,
     "support": 0.2
+  },
+  "Ahri": {
+    "top": 1.3,
+    "jungle": 0,
+    "middle": 97.6,
+    "bottom": 0.3,
+    "support": 0.7
   },
   "Alistar": {
     "top": 1.6,
@@ -41,22 +41,22 @@
     "bottom": 0,
     "support": 15.3
   },
-  "Ambessa": {
-    "top": 44.6,
-    "jungle": 51.9,
-    "middle": 3.3,
-    "bottom": 0.1,
-    "support": 0.2
-  },
   "Anivia": {
-    "top": 15.8,
+    "top": 15.9,
     "jungle": 0,
     "middle": 60.8,
     "bottom": 1.4,
     "support": 21.9
   },
+  "Ambessa": {
+    "top": 44.5,
+    "jungle": 52,
+    "middle": 3.3,
+    "bottom": 0.1,
+    "support": 0.2
+  },
   "Annie": {
-    "top": 3.9,
+    "top": 4,
     "jungle": 0,
     "middle": 84.8,
     "bottom": 1,
@@ -78,8 +78,8 @@
   },
   "Aurelion Sol": {
     "top": 4.2,
-    "jungle": 4,
-    "middle": 72.2,
+    "jungle": 3.9,
+    "middle": 72.3,
     "bottom": 17.8,
     "support": 1.8
   },
@@ -105,18 +105,25 @@
     "support": 99.6
   },
   "Bel'Veth": {
-    "top": 1.8,
+    "top": 1.9,
     "jungle": 95.3,
     "middle": 2,
     "bottom": 0.1,
     "support": 0.7
   },
   "Blitzcrank": {
-    "top": 0.1,
+    "top": 0.2,
     "jungle": 0.1,
     "middle": 0.2,
     "bottom": 0.1,
     "support": 99.6
+  },
+  "Brand": {
+    "top": 4.2,
+    "jungle": 7.7,
+    "middle": 20.1,
+    "bottom": 15.6,
+    "support": 52.4
   },
   "Braum": {
     "top": 0.1,
@@ -125,16 +132,9 @@
     "bottom": 0,
     "support": 99.9
   },
-  "Brand": {
-    "top": 4.2,
-    "jungle": 7.7,
-    "middle": 20,
-    "bottom": 15.6,
-    "support": 52.4
-  },
   "Briar": {
-    "top": 4.9,
-    "jungle": 90.1,
+    "top": 4.8,
+    "jungle": 90.2,
     "middle": 3.9,
     "bottom": 0.3,
     "support": 0.9
@@ -148,7 +148,7 @@
   },
   "Camille": {
     "top": 82.2,
-    "jungle": 6,
+    "jungle": 5.9,
     "middle": 1.8,
     "bottom": 0.1,
     "support": 10
@@ -157,11 +157,11 @@
     "top": 27.2,
     "jungle": 0.3,
     "middle": 58.5,
-    "bottom": 13.3,
+    "bottom": 13.2,
     "support": 0.7
   },
   "Cho'Gath": {
-    "top": 68.7,
+    "top": 68.8,
     "jungle": 11.3,
     "middle": 15.7,
     "bottom": 1.2,
@@ -170,7 +170,7 @@
   "Corki": {
     "top": 1.6,
     "jungle": 0.2,
-    "middle": 8,
+    "middle": 7.9,
     "bottom": 90,
     "support": 0.2
   },
@@ -184,13 +184,13 @@
   "Diana": {
     "top": 1.6,
     "jungle": 49.4,
-    "middle": 48.7,
+    "middle": 48.6,
     "bottom": 0.1,
     "support": 0.3
   },
   "Dr. Mundo": {
-    "top": 51.2,
-    "jungle": 46.6,
+    "top": 51.5,
+    "jungle": 46.3,
     "middle": 1.5,
     "bottom": 0.2,
     "support": 0.6
@@ -203,7 +203,7 @@
     "support": 0.1
   },
   "Ekko": {
-    "top": 1.5,
+    "top": 1.6,
     "jungle": 55.6,
     "middle": 41.9,
     "bottom": 0.2,
@@ -218,16 +218,16 @@
   },
   "Evelynn": {
     "top": 0.9,
-    "jungle": 97,
+    "jungle": 96.9,
     "middle": 0.6,
     "bottom": 0,
-    "support": 1.5
+    "support": 1.6
   },
   "Ezreal": {
     "top": 0.4,
     "jungle": 0.3,
     "middle": 1.6,
-    "bottom": 95.2,
+    "bottom": 95.3,
     "support": 2.4
   },
   "Fiora": {
@@ -238,11 +238,11 @@
     "support": 0.5
   },
   "Fiddlesticks": {
-    "top": 10.1,
+    "top": 10.2,
     "jungle": 71.3,
     "middle": 3,
     "bottom": 0.1,
-    "support": 15.4
+    "support": 15.3
   },
   "Fizz": {
     "top": 1.7,
@@ -256,7 +256,7 @@
     "jungle": 0.2,
     "middle": 83,
     "bottom": 0.1,
-    "support": 12.1
+    "support": 12.2
   },
   "Gangplank": {
     "top": 91.6,
@@ -279,26 +279,12 @@
     "bottom": 0.1,
     "support": 0.2
   },
-  "Gragas": {
-    "top": 64.2,
-    "jungle": 18.9,
-    "middle": 11.2,
-    "bottom": 0.2,
-    "support": 5.5
-  },
   "Graves": {
     "top": 1.4,
     "jungle": 97.7,
     "middle": 0.7,
     "bottom": 0.1,
     "support": 0.1
-  },
-  "Gwen": {
-    "top": 64.6,
-    "jungle": 24.3,
-    "middle": 10.8,
-    "bottom": 0.2,
-    "support": 0
   },
   "Hecarim": {
     "top": 0.4,
@@ -307,10 +293,24 @@
     "bottom": 0,
     "support": 0
   },
+  "Gragas": {
+    "top": 64.2,
+    "jungle": 18.9,
+    "middle": 11.2,
+    "bottom": 0.2,
+    "support": 5.5
+  },
+  "Gwen": {
+    "top": 64.7,
+    "jungle": 24.2,
+    "middle": 10.8,
+    "bottom": 0.2,
+    "support": 0
+  },
   "Heimerdinger": {
-    "top": 67.7,
+    "top": 67.6,
     "jungle": 0.7,
-    "middle": 15.1,
+    "middle": 15.2,
     "bottom": 6.2,
     "support": 10.3
   },
@@ -329,7 +329,7 @@
     "support": 0.6
   },
   "Irelia": {
-    "top": 62.8,
+    "top": 62.7,
     "jungle": 0,
     "middle": 36.2,
     "bottom": 1,
@@ -358,14 +358,14 @@
   },
   "Jax": {
     "top": 70.2,
-    "jungle": 27.8,
+    "jungle": 27.9,
     "middle": 0.9,
     "bottom": 0.1,
     "support": 1
   },
   "Jayce": {
     "top": 74.7,
-    "jungle": 12.6,
+    "jungle": 12.5,
     "middle": 12.1,
     "bottom": 0.3,
     "support": 0.4
@@ -391,19 +391,19 @@
     "bottom": 0.1,
     "support": 2.4
   },
-  "Kalista": {
-    "top": 5.8,
-    "jungle": 0.1,
-    "middle": 3,
-    "bottom": 90.5,
-    "support": 0.6
-  },
   "Kai'Sa": {
     "top": 0.9,
     "jungle": 0.4,
     "middle": 1.2,
     "bottom": 97.3,
     "support": 0.2
+  },
+  "Kalista": {
+    "top": 5.9,
+    "jungle": 0.1,
+    "middle": 3,
+    "bottom": 90.5,
+    "support": 0.6
   },
   "Karma": {
     "top": 1.9,
@@ -415,14 +415,14 @@
   "Karthus": {
     "top": 3.4,
     "jungle": 64.9,
-    "middle": 7.6,
+    "middle": 7.7,
     "bottom": 22.7,
     "support": 1.4
   },
   "Kassadin": {
     "top": 4,
     "jungle": 0.2,
-    "middle": 95.6,
+    "middle": 95.7,
     "bottom": 0.1,
     "support": 0.1
   },
@@ -430,7 +430,7 @@
     "top": 1.4,
     "jungle": 0.1,
     "middle": 91.3,
-    "bottom": 6.6,
+    "bottom": 6.7,
     "support": 0.6
   },
   "Kayle": {
@@ -450,9 +450,9 @@
   "Kennen": {
     "top": 80.4,
     "jungle": 0,
-    "middle": 15.7,
+    "middle": 15.6,
     "bottom": 0.4,
-    "support": 3.4
+    "support": 3.5
   },
   "Kha'Zix": {
     "top": 0.2,
@@ -479,7 +479,7 @@
     "top": 3.6,
     "jungle": 0.2,
     "middle": 19.3,
-    "bottom": 75.2,
+    "bottom": 75.3,
     "support": 1.7
   },
   "LeBlanc": {
@@ -538,6 +538,13 @@
     "bottom": 6.9,
     "support": 53.1
   },
+  "Malphite": {
+    "top": 72.2,
+    "jungle": 14.6,
+    "middle": 9.8,
+    "bottom": 0.1,
+    "support": 3.4
+  },
   "Malzahar": {
     "top": 5.5,
     "jungle": 0.2,
@@ -545,33 +552,19 @@
     "bottom": 1.6,
     "support": 1.4
   },
-  "Malphite": {
-    "top": 72,
-    "jungle": 14.7,
-    "middle": 9.8,
-    "bottom": 0.1,
-    "support": 3.4
-  },
   "Maokai": {
     "top": 17.1,
     "jungle": 12.7,
     "middle": 0.6,
     "bottom": 0.1,
-    "support": 69.6
+    "support": 69.5
   },
   "Master Yi": {
-    "top": 11,
+    "top": 10.9,
     "jungle": 85.6,
     "middle": 1.8,
     "bottom": 0.7,
     "support": 0.9
-  },
-  "Milio": {
-    "top": 0,
-    "jungle": 0,
-    "middle": 0.1,
-    "bottom": 0,
-    "support": 99.9
   },
   "Mel": {
     "top": 0.7,
@@ -580,11 +573,18 @@
     "bottom": 15.4,
     "support": 25
   },
+  "Milio": {
+    "top": 0,
+    "jungle": 0,
+    "middle": 0.1,
+    "bottom": 0,
+    "support": 99.9
+  },
   "Miss Fortune": {
     "top": 0.2,
     "jungle": 0,
     "middle": 0.7,
-    "bottom": 96.8,
+    "bottom": 96.9,
     "support": 2.2
   },
   "Mordekaiser": {
@@ -596,15 +596,15 @@
   },
   "Morgana": {
     "top": 1.3,
-    "jungle": 5.3,
-    "middle": 11.1,
+    "jungle": 5.2,
+    "middle": 11,
     "bottom": 0.6,
     "support": 81.8
   },
   "Naafiri": {
     "top": 3.6,
-    "jungle": 71.6,
-    "middle": 23.9,
+    "jungle": 71.7,
+    "middle": 23.8,
     "bottom": 0.5,
     "support": 0.4
   },
@@ -616,8 +616,8 @@
     "support": 99.9
   },
   "Nasus": {
-    "top": 65.4,
-    "jungle": 21.5,
+    "top": 65.5,
+    "jungle": 21.4,
     "middle": 12,
     "bottom": 0.2,
     "support": 1
@@ -632,7 +632,7 @@
   "Neeko": {
     "top": 3.1,
     "jungle": 3.4,
-    "middle": 15.4,
+    "middle": 15.5,
     "bottom": 0.6,
     "support": 77.4
   },
@@ -641,7 +641,7 @@
     "jungle": 84.3,
     "middle": 1.1,
     "bottom": 0.2,
-    "support": 11.3
+    "support": 11.4
   },
   "Nilah": {
     "top": 0.5,
@@ -686,11 +686,11 @@
     "support": 1.4
   },
   "Pantheon": {
-    "top": 26.4,
+    "top": 26.5,
     "jungle": 22.8,
     "middle": 10.8,
     "bottom": 0.3,
-    "support": 39.7
+    "support": 39.6
   },
   "Poppy": {
     "top": 37.4,
@@ -717,7 +717,7 @@
     "top": 72.1,
     "jungle": 0.9,
     "middle": 22.2,
-    "bottom": 1.9,
+    "bottom": 2,
     "support": 2.8
   },
   "Rakan": {
@@ -732,11 +732,11 @@
     "jungle": 89.9,
     "middle": 0.6,
     "bottom": 0.1,
-    "support": 5.2
+    "support": 5.1
   },
   "Rek'Sai": {
-    "top": 8.7,
-    "jungle": 88.8,
+    "top": 8.6,
+    "jungle": 88.9,
     "middle": 0.9,
     "bottom": 0.1,
     "support": 1.6
@@ -762,19 +762,19 @@
     "bottom": 0.1,
     "support": 0.1
   },
-  "Rengar": {
-    "top": 6,
-    "jungle": 91.2,
-    "middle": 0,
-    "bottom": 1,
-    "support": 1.8
-  },
   "Riven": {
     "top": 89.9,
     "jungle": 3.5,
     "middle": 5.9,
     "bottom": 0.3,
     "support": 0.4
+  },
+  "Rengar": {
+    "top": 6,
+    "jungle": 91.2,
+    "middle": 0,
+    "bottom": 1,
+    "support": 1.7
   },
   "Rumble": {
     "top": 85.2,
@@ -808,8 +808,8 @@
     "top": 1,
     "jungle": 0,
     "middle": 0.4,
-    "bottom": 38.5,
-    "support": 60.1
+    "bottom": 38.6,
+    "support": 60
   },
   "Seraphine": {
     "top": 0.1,
@@ -819,7 +819,7 @@
     "support": 89.8
   },
   "Sett": {
-    "top": 93.4,
+    "top": 93.3,
     "jungle": 0.8,
     "middle": 2.8,
     "bottom": 0.3,
@@ -833,15 +833,15 @@
     "support": 21.2
   },
   "Shen": {
-    "top": 63.5,
-    "jungle": 26.4,
+    "top": 63.6,
+    "jungle": 26.2,
     "middle": 1.4,
     "bottom": 0.1,
     "support": 8.7
   },
   "Shyvana": {
-    "top": 9.6,
-    "jungle": 89.8,
+    "top": 9.5,
+    "jungle": 89.9,
     "middle": 0.5,
     "bottom": 0,
     "support": 0.1
@@ -849,7 +849,7 @@
   "Singed": {
     "top": 85,
     "jungle": 1.8,
-    "middle": 8.7,
+    "middle": 8.6,
     "bottom": 1.7,
     "support": 2.8
   },
@@ -868,21 +868,21 @@
     "support": 0.1
   },
   "Skarner": {
-    "top": 27.5,
-    "jungle": 60.1,
+    "top": 27.4,
+    "jungle": 60.2,
     "middle": 0.8,
     "bottom": 0,
-    "support": 11.5
+    "support": 11.6
   },
   "Smolder": {
     "top": 4.4,
     "jungle": 0,
-    "middle": 8.9,
-    "bottom": 86.6,
+    "middle": 8.8,
+    "bottom": 86.7,
     "support": 0.1
   },
   "Sona": {
-    "top": 0.1,
+    "top": 0.2,
     "jungle": 0,
     "middle": 0.2,
     "bottom": 0.2,
@@ -896,11 +896,18 @@
     "support": 98.1
   },
   "Swain": {
-    "top": 10.4,
+    "top": 10.5,
     "jungle": 0,
-    "middle": 17.2,
+    "middle": 17.1,
     "bottom": 26.1,
-    "support": 46.2
+    "support": 46.3
+  },
+  "Syndra": {
+    "top": 1.2,
+    "jungle": 0,
+    "middle": 93.2,
+    "bottom": 3.8,
+    "support": 1.8
   },
   "Sylas": {
     "top": 8.5,
@@ -909,18 +916,11 @@
     "bottom": 0.3,
     "support": 6.9
   },
-  "Syndra": {
-    "top": 1.2,
-    "jungle": 0,
-    "middle": 93.1,
-    "bottom": 3.8,
-    "support": 1.8
-  },
   "Tahm Kench": {
-    "top": 47,
+    "top": 47.1,
     "jungle": 0.3,
     "middle": 1.7,
-    "bottom": 2.2,
+    "bottom": 2.1,
     "support": 48.8
   },
   "Taliyah": {
@@ -937,19 +937,19 @@
     "bottom": 0.2,
     "support": 95.6
   },
-  "Teemo": {
-    "top": 69.2,
-    "jungle": 16,
-    "middle": 2.5,
-    "bottom": 0.8,
-    "support": 11.5
-  },
   "Talon": {
     "top": 1,
-    "jungle": 62.1,
-    "middle": 36.7,
+    "jungle": 62.2,
+    "middle": 36.6,
     "bottom": 0.1,
     "support": 0.2
+  },
+  "Teemo": {
+    "top": 69.3,
+    "jungle": 15.9,
+    "middle": 2.5,
+    "bottom": 0.8,
+    "support": 11.6
   },
   "Thresh": {
     "top": 0.1,
@@ -958,19 +958,19 @@
     "bottom": 0.1,
     "support": 99.7
   },
+  "Trundle": {
+    "top": 64.8,
+    "jungle": 28.9,
+    "middle": 0.9,
+    "bottom": 0.2,
+    "support": 5.3
+  },
   "Tristana": {
     "top": 1.6,
     "jungle": 0.1,
     "middle": 9.6,
     "bottom": 88.5,
     "support": 0.2
-  },
-  "Trundle": {
-    "top": 64.7,
-    "jungle": 28.9,
-    "middle": 0.9,
-    "bottom": 0.2,
-    "support": 5.3
   },
   "Tryndamere": {
     "top": 84.3,
@@ -982,7 +982,7 @@
   "Twisted Fate": {
     "top": 4.4,
     "jungle": 0.3,
-    "middle": 91.1,
+    "middle": 91,
     "bottom": 1.4,
     "support": 2.8
   },
@@ -994,8 +994,8 @@
     "support": 4.3
   },
   "Udyr": {
-    "top": 30.3,
-    "jungle": 66.9,
+    "top": 30.2,
+    "jungle": 67,
     "middle": 2.2,
     "bottom": 0.2,
     "support": 0.5
@@ -1008,17 +1008,17 @@
     "support": 0.7
   },
   "Varus": {
-    "top": 26.3,
+    "top": 26.4,
     "jungle": 0,
     "middle": 5.1,
-    "bottom": 67.9,
+    "bottom": 67.7,
     "support": 0.8
   },
   "Vayne": {
-    "top": 34.9,
+    "top": 35,
     "jungle": 1.5,
     "middle": 1.7,
-    "bottom": 61.6,
+    "bottom": 61.5,
     "support": 0.3
   },
   "Veigar": {
@@ -1064,22 +1064,22 @@
     "support": 0.2
   },
   "Vladimir": {
-    "top": 26.7,
+    "top": 26.8,
     "jungle": 0,
     "middle": 63.5,
-    "bottom": 9.7,
+    "bottom": 9.6,
     "support": 0.1
   },
   "Volibear": {
-    "top": 60.7,
+    "top": 60.6,
     "jungle": 38.1,
     "middle": 0.9,
     "bottom": 0.1,
     "support": 0.3
   },
   "Warwick": {
-    "top": 32.1,
-    "jungle": 66.5,
+    "top": 32,
+    "jungle": 66.6,
     "middle": 1,
     "bottom": 0,
     "support": 0.4
@@ -1100,7 +1100,7 @@
   },
   "Xin Zhao": {
     "top": 5.7,
-    "jungle": 91.8,
+    "jungle": 91.7,
     "middle": 1.8,
     "bottom": 0.2,
     "support": 0.6
@@ -1149,14 +1149,14 @@
   },
   "Zac": {
     "top": 14.4,
-    "jungle": 71.8,
+    "jungle": 71.9,
     "middle": 5.4,
     "bottom": 0.1,
     "support": 8.3
   },
   "Zed": {
     "top": 4.4,
-    "jungle": 24.1,
+    "jungle": 24.2,
     "middle": 70.6,
     "bottom": 0.2,
     "support": 0.6
@@ -1180,7 +1180,7 @@
     "jungle": 0,
     "middle": 9.9,
     "bottom": 0.8,
-    "support": 85.2
+    "support": 85.1
   },
   "Zoe": {
     "top": 2.7,
@@ -1191,9 +1191,9 @@
   },
   "Zyra": {
     "top": 0.5,
-    "jungle": 29.6,
+    "jungle": 29.5,
     "middle": 3.3,
     "bottom": 2.6,
-    "support": 64
+    "support": 64.1
   }
 }
