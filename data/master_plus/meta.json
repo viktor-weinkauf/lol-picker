@@ -1,9 +1,9 @@
 {
   "patch": "30",
-  "current_patch": "16.15",
-  "ddragon_version": "16.15.1",
+  "current_patch": "16.16",
+  "ddragon_version": "16.16.1",
   "tier": "master_plus",
-  "scraped_at": "2026-08-10T04:22:03.823863",
-  "viable_pairs": 625,
+  "scraped_at": "2026-08-17T03:30:11.509861",
+  "viable_pairs": 627,
   "min_lane_pct": 0.5
 }
